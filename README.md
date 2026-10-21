@@ -20,6 +20,12 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 ## ライセンス / License
 
+**ざっくり言うと**: どれも商用を含めて自由に使えます。配り直すときに作者の表示 (© 2026 Hiroki Mori / trkAR) を残してください。
+アドオンだけは Blender の決まりで GPL なので、アドオンそのものを改変して配るときはソースも一緒に公開してください。
+
+**In short**: everything here can be used freely, including commercially. Keep the credit (© 2026 Hiroki Mori / trkAR)
+when you redistribute. Only the add-on is GPL (as Blender requires): if you distribute a modified add-on, publish its source too.
+
 | 対象 | ライセンス |
 | --- | --- |
 | `addon/` (Blender アドオン trkAR Camera) | GPL-3.0-or-later (`addon/LICENSE`) |

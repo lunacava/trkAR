@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "artrk_camera"
+version = "0.9.11"
+name = "trkAR Camera"
+tagline = "Drive a camera from trkAR (iPhone) and send its view over NDI"
+maintainer = "hiroki"
+type = "add-on"
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+network = "OSC camera pose, NDI video, automation port on 127.0.0.1"
+files = "Load libndi, write takes, run your after-take command"

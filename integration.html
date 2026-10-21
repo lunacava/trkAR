@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Integration / 連携</title>
+<meta name="description" content="trkAR — iPhone / iPad をバーチャルプロダクション用のカメラトラッカーにするアプリ">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header>
+  <img src="assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+</header>
+<nav><a href="./">Home</a><a href="integration.html">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>連携 (自分のクラウドやツールにつなぐ)</h2>
+<p>trkAR は、撮ったテイクをどこにも送りません。S3・Google Drive・Frame.io・社内の NAS などへの連携は、Blender アドオン <span class="mono">trkAR Camera</span> の「テイクのあとに流すコマンド」で、自分で用意したスクリプトを動かしてつなぎます。</p>
+<ul>
+  <li><b>フック</b>: 録画を止めたとき・書き出したときに、設定したコマンドを流します。テイクの場所などを引数と環境変数で渡し、結果をパネルに表示します</li>
+  <li><b>テイクのフォルダ</b>: <span class="mono">take.json</span>・フレーム・深度・書き出した動画の形</li>
+  <li><b>通信ポート (自動化)</b>: 外のツールから、シーンを開く・テイクを選ぶ・書き出す、を 127.0.0.1 の HTTP で操作できます</li>
+  <li><b>iPhone から出るデータ</b>: OSC (カメラの位置・向き・タイムコード)、NDI® の映像と深度、無圧縮の深度 (UDP)</li>
+</ul>
+<p>仕様は <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a>、見本は <a href="https://github.com/lunacava/trkAR/blob/main/examples/s3_upload.py">examples/s3_upload.py</a> (テイクを Amazon S3 に上げる) です。</p>
+
+<h3>Claude などのコーディングエージェントで作る</h3>
+<p>このリポジトリを手元に取り、エージェントに「trkAR のテイクを自分の ○○ に上げるフックを作って」と頼んでください。リポジトリの <a href="https://github.com/lunacava/trkAR/blob/main/CLAUDE.md">CLAUDE.md</a> に、エージェント向けの手順と守ること (認証情報を書かない、など) を書いてあります。</p>
+<pre class="mono" style="white-space:pre-wrap;color:var(--accent)">git clone https://github.com/lunacava/trkAR.git
+cd trkAR
+claude   # 「テイクを自分の S3 の my-bucket に上げるフックを作って」</pre>
+
+<h3>Blender アドオンを入れる</h3>
+<p><a href="https://github.com/lunacava/trkAR/releases">Releases</a> から <span class="mono">artrk_camera-&lt;版&gt;.zip</span> を落とし、Blender 4.2 以降で <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; ▼ &gt; ディスクからインストール</span> で入れます。NDI を使うには <a href="https://ndi.video/tools/">NDI Tools</a> などの NDI ランタイムが必要です。アドオンは GPL-3.0-or-later です。</p>
+
+<section class="lang" lang="en">
+<h2>Integration</h2>
+<p>trkAR never uploads your takes anywhere. To connect it to S3, Google Drive, Frame.io or your own storage, set an <b>after-take command</b> in the Blender add-on <span class="mono">trkAR Camera</span>; it runs your script when a recording stops and when an export finishes, passes the take folder as arguments and environment variables, and shows the result in the panel.</p>
+<ul>
+  <li><b>Hook</b>: run your command after recording / export</li>
+  <li><b>Take folder</b>: <span class="mono">take.json</span>, frames, depth and the exported video</li>
+  <li><b>Automation port</b>: open scenes, select takes and export over HTTP on 127.0.0.1</li>
+  <li><b>Data from the iPhone</b>: OSC (camera pose, timecode), NDI® video and depth, raw depth over UDP</li>
+</ul>
+<p>See <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a> (spec, Japanese) and <a href="https://github.com/lunacava/trkAR/blob/main/examples/s3_upload.py">examples/s3_upload.py</a>. With a coding agent such as Claude, clone the repository and ask it to build a hook for your service — <a href="https://github.com/lunacava/trkAR/blob/main/CLAUDE.md">CLAUDE.md</a> tells the agent how.</p>
+<p>Get the add-on zip from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and install it in Blender 4.2+ via <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; ▼ &gt; Install from Disk</span>. NDI needs an NDI runtime such as <a href="https://ndi.video/tools/">NDI Tools</a>. The add-on is GPL-3.0-or-later.</p>
+</section>
+<footer>
+<p>© 2026 Hiroki Mori. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+</body>
+</html>

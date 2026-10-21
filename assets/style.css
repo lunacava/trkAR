@@ -1,7 +1,7 @@
 /* trkAR — colours from the app icon / app theme (Theme.swift, plan L2) */
 @font-face { font-family: "OCR A"; src: url("OCRA.otf") format("opentype"); font-display: swap; }
 :root {
-  --base: #0f0d24; --panel: #18163a; --accent: #e9f6fc; --frame: #8f89c9;
+  --base: #0f0d24; --panel: #18163a; --accent: #e9f6fc; --frame: #899ac9;
   --ok: #8fc8ff; --warn: #ffd479; --text: #d9e6dd;
 }
 * { box-sizing: border-box; }

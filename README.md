@@ -2,6 +2,9 @@
 
 AR camera tracking for virtual production — iPhone / iPad app and Blender add-on.
 
+> trkAR は Hiroki Mori の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。
+> trkAR is a personal project by Hiroki Mori. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.
+
 - Website: https://lunacava.github.io/trkAR/
 - Blender add-on (trkAR Camera): [Releases](https://github.com/lunacava/trkAR/releases) / source in [`addon/`](addon/)
 - Integration spec (hooks, take folder, automation port, OSC / NDI / UDP): [`INTEGRATION.md`](INTEGRATION.md)

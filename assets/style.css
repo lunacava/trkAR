@@ -1,0 +1,31 @@
+/* trkAR — colours from the app icon / app theme (Theme.swift, plan T3) */
+@font-face { font-family: "OCR A"; src: url("OCRA.otf") format("opentype"); font-display: swap; }
+:root {
+  --base: #1b1226; --panel: #241a33; --accent: #ebf9f0; --frame: #968aa2;
+  --ok: #8fc8ff; --warn: #ffd479; --text: #d9e6dd;
+}
+* { box-sizing: border-box; }
+html { background: var(--base); }
+body {
+  margin: 0 auto; max-width: 760px; padding: 32px 20px 64px;
+  color: var(--text); background: var(--base);
+  font: 16px/1.75 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+}
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+header img { width: 72px; height: 72px; border-radius: 16px; }
+h1, h2, h3, nav, .mono { font-family: "OCR A", ui-monospace, Menlo, monospace; color: var(--accent); font-weight: normal; }
+h1 { font-size: 34px; margin: 0; letter-spacing: 0.04em; }
+h2 { font-size: 20px; margin: 40px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--frame); }
+h3 { font-size: 16px; margin: 24px 0 4px; }
+nav { margin: 8px 0 24px; font-size: 14px; }
+nav a { margin-right: 18px; }
+a { color: var(--ok); }
+.tagline { margin: 4px 0 0; color: var(--frame); }
+.lang { margin-top: 48px; padding-top: 8px; border-top: 1px dashed var(--frame); }
+.note { color: var(--frame); font-size: 14px; }
+.badge {
+  display: inline-block; padding: 6px 14px; margin: 12px 0; border: 1px solid var(--frame);
+  border-radius: 2px; font-family: "OCR A", ui-monospace, monospace; color: var(--accent); text-decoration: none;
+}
+ul { padding-left: 1.3em; }
+footer { margin-top: 56px; font-size: 13px; color: var(--frame); }

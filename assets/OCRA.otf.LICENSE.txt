@@ -1,0 +1,48 @@
+Font: OCR-A (OpenType, OCRA.otf) from Matthew Skala's "ocr" package 0.3.1
+Source: https://tsukurimashou.org/ocr.php.en (https://tsukurimashou.org/files/ocr-0.3.1.zip, sha256 58136fccfdee0923cc83a20996a067b98bae054570ee41bf896d7ca8224399bf)
+Matthew Skala releases his work on it to the public domain. The original copyright notice and terms
+from the METAFONT source (msk-ocra.mp) follow and are retained as required:
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% METAFONT-84 Definition for OCR-A Optical Character Recognition Font
+% (C) Copyright 1988, 1989 Richard B. Wales.  All Rights Reserved.
+%
+% Coded by:
+%
+%	Richard B. Wales
+%	Computer Science Department
+%	University of California, Los Angeles (UCLA)
+%	Los Angeles, California 90024-1596 (USA)
+%	+1 (213) 825-5683
+%	wales@CS.UCLA.EDU
+%
+% Source of information:
+%
+%	ANSI Standard X3.17-1977 (approved January 20, 1977, by the
+%	American National Standards Institute, Inc.)
+%
+% Based on an earlier version by:
+%
+%	Tor Lillqvist
+%	Computing Services
+%	Technical Research Centre of Finland
+%	TML@FINGATE.BITNET; mcvax!santra!tml
+%
+% Terms of copyright:
+%
+%	You may do anything you wish with this font definition, as
+%	long as you retain the original copyright notice and credit
+%	information intact in the source, and do not charge any fee
+%	for distribution of either the source or any fonts derived
+%	from it beyond a reasonable copying or communications charge.
+%
+% Disclaimer:
+%
+%	While I have made every reasonable effort to make this font
+%	definition correspond to the specifications in ANSI Standard
+%	X3.17-1977, I do not guarantee that it conforms fully to all
+%	official requirements for the OCR-A font, nor that the char-
+%	acters produced from this definition will be usable by any
+%	particular OCR hardware and/or software.  It is the respon-
+%	sibility of the user to determine the usability of this font

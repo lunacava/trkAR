@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Support / サポート</title>
+<meta name="description" content="trkAR — iPhone / iPad をバーチャルプロダクション用のカメラトラッカーにするアプリ">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header>
+  <img src="assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+</header>
+<nav><a href="./">Home</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>サポート</h2>
+<p>不具合の報告やご質問は、<a href="https://github.com/lunacava/trkAR/issues">GitHub Issues</a> にお寄せください。お使いの機種・iOS のバージョン・trkAR のバージョン (設定 → About → Credits に表示) を書いていただけると助かります。</p>
+
+<h3>動作環境</h3>
+<ul>
+  <li>iOS 16 以降、ARKit に対応した iPhone / iPad</li>
+  <li>深度の送出には LiDAR (背面) または TrueDepth (前面) カメラが必要です</li>
+  <li>PC と連動させるときは、iPhone / iPad と PC を同じネットワークにつないでください</li>
+</ul>
+
+<h3>よくある質問</h3>
+<p><b>PC にデータが届かない</b><br>設定画面の PC IP Address とポート (OSC の既定は 8000) が、受け取る側の設定と同じか確かめてください。初回起動時の「ローカルネットワーク」の許可が必要です (iOS の設定 → プライバシーとセキュリティ → ローカルネットワーク)。</p>
+<p><b>NDI のソースが一覧に出ない</b><br>同じネットワーク上で NDI を送出している PC が必要です。一覧の rescan を押してください。NDI については <a href="https://ndi.video/">ndi.video</a> をご覧ください。</p>
+<p><b>PC がなくても試せますか</b><br>デモシーンで、床に動物を置いて AR の動きを確かめられます。</p>
+
+<section class="lang" lang="en">
+<h2>Support</h2>
+<p>Please report bugs or ask questions on <a href="https://github.com/lunacava/trkAR/issues">GitHub Issues</a>. It helps if you include your device model, iOS version and trkAR version (shown in Settings → About → Credits).</p>
+<h3>Requirements</h3>
+<ul>
+  <li>iPhone or iPad with ARKit support, iOS 16 or later</li>
+  <li>Depth output needs a LiDAR (back) or TrueDepth (front) camera</li>
+  <li>To work with a PC, connect the device and the PC to the same network</li>
+</ul>
+<h3>FAQ</h3>
+<p><b>No data arrives on my PC</b><br>Check that the PC IP Address and port in Settings (OSC default: 8000) match the receiver. trkAR needs Local Network access (iOS Settings → Privacy &amp; Security → Local Network).</p>
+<p><b>No NDI sources are listed</b><br>You need a PC sending NDI on the same network. Tap “rescan”. See <a href="https://ndi.video/">ndi.video</a> for more about NDI.</p>
+<p><b>Can I try it without a PC?</b><br>Yes — the demo scenes let you place AR animals on the floor.</p>
+</section>
+<footer>
+<p>© 2026 Hiroki Mori. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+</body>
+</html>

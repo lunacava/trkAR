@@ -248,3 +248,8 @@ NDI® is a registered trademark of Vizrt NDI AB. 詳しくは [ndi.video](https:
 - [`examples/s3_upload.py`](examples/s3_upload.py): テイクを Amazon S3 に上げるフック (aws CLI を使う)
 
 自分の連携を作るときは、見本をコピーして、上げ先と認証の部分を書き換えるのが近道です。
+
+---
+
+この文書は CC BY 4.0 (© 2026 Hiroki Mori / trkAR)、見本のコードは Apache-2.0 です。
+**使ってくれたら、ひとこと連絡をもらえるとうれしいです** (任意): [「使っています」の Issue](https://github.com/lunacava/trkAR/issues/new?template=used-by.md)

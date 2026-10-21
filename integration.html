@@ -35,6 +35,9 @@ claude   # 「テイクを自分の S3 の my-bucket に上げるフックを作
 <h3>Blender アドオンを入れる</h3>
 <p><a href="https://github.com/lunacava/trkAR/releases">Releases</a> から <span class="mono">artrk_camera-&lt;版&gt;.zip</span> を落とし、Blender 4.2 以降で <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; ▼ &gt; ディスクからインストール</span> で入れます。NDI を使うには <a href="https://ndi.video/tools/">NDI Tools</a> などの NDI ランタイムが必要です。アドオンは GPL-3.0-or-later です。</p>
 
+<h3>ライセンスと、お願い</h3>
+<p>アドオンは GPL-3.0-or-later、見本のコードは Apache-2.0、仕様などの文書とサンプルのシーンは CC BY 4.0 です。<b>使ってくれたら、ひとこと連絡をもらえるとうれしいです</b> (ライセンスの条件ではなく、お願いです): <a href="https://github.com/lunacava/trkAR/issues/new?template=used-by.md">「使っています」の Issue</a></p>
+
 <section class="lang" lang="en">
 <h2>Integration</h2>
 <p>trkAR never uploads your takes anywhere. To connect it to S3, Google Drive, Frame.io or your own storage, set an <b>after-take command</b> in the Blender add-on <span class="mono">trkAR Camera</span>; it runs your script when a recording stops and when an export finishes, passes the take folder as arguments and environment variables, and shows the result in the panel.</p>
@@ -45,6 +48,7 @@ claude   # 「テイクを自分の S3 の my-bucket に上げるフックを作
   <li><b>Data from the iPhone</b>: OSC (camera pose, timecode), NDI® video and depth, raw depth over UDP</li>
 </ul>
 <p>See <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a> (spec, Japanese) and <a href="https://github.com/lunacava/trkAR/blob/main/examples/s3_upload.py">examples/s3_upload.py</a>. With a coding agent such as Claude, clone the repository and ask it to build a hook for your service — <a href="https://github.com/lunacava/trkAR/blob/main/CLAUDE.md">CLAUDE.md</a> tells the agent how.</p>
+<p>License: add-on GPL-3.0-or-later, examples Apache-2.0, docs and sample scenes CC BY 4.0. <b>If you use trkAR, I'd love to hear about it</b> (optional, not a license condition): <a href="https://github.com/lunacava/trkAR/issues/new?template=used-by.md">open a "Used by" issue</a>.</p>
 <p>Get the add-on zip from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and install it in Blender 4.2+ via <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; ▼ &gt; Install from Disk</span>. NDI needs an NDI runtime such as <a href="https://ndi.video/tools/">NDI Tools</a>. The add-on is GPL-3.0-or-later.</p>
 </section>
 <footer>

@@ -6,7 +6,7 @@ trkAR 自身はクラウドに何も送りません。S3・Google Drive・Frame.
 「自分の ○○ につなぐスクリプトを作って」と頼めば作れる粒度で書いています (`CLAUDE.md` も参照)。
 
 - 仕様の版: 1 (フックの `TRKAR_HOOK_VERSION` と同じ)。項目は足すことはあっても、意味は変えません
-- 対象: trkAR Camera 0.9.11 以降、trkAR 1.1 以降
+- 対象: trkAR Camera 0.9.11 以降、trkAR 1.1 以降 (組み合わせは [5 章](#5-アプリとアドオンの組み合わせ))
 
 つなぎ目は 4 つあります。
 
@@ -16,6 +16,8 @@ trkAR 自身はクラウドに何も送りません。S3・Google Drive・Frame.
 | [2. テイクのフォルダ](#2-テイクのフォルダ) | ファイル | フックや別のツールが読むデータの形 |
 | [3. 通信ポート (自動化)](#3-通信ポート-自動化) | 自分のツール → Blender | シーンを開く・テイクを選ぶ・書き出すを外から操作する |
 | [4. iPhone から出るデータ](#4-iphone-から出るデータ-oscndiudp) | iPhone → PC | Blender を使わずに TouchDesigner などで直接受ける |
+
+アプリとアドオンの版の組み合わせは [5 章](#5-アプリとアドオンの組み合わせ) にまとめています。
 
 ---
 
@@ -138,6 +140,8 @@ take_20261021_120000/
 | `device` | object | 撮った端末。`system` (`ARtrk`)・`model`・`identifier`・`os`・`app`・`device_name`・`client_id`・`fps`・`hfov` (水平画角、度)・`tc_source` (`internal` か `ltc`) |
 | `people` | object | `creator`・`operator` |
 | `render` | object | 書き出したあとだけ。`format` (`MP4`/`PNG`)・`width`・`height`・`fps`・`frame_start`・`frame_end`・`blend`・`kept` (控えのファイル名) |
+| `camera_offsets` | object | 0.9.12 以降。録り始めにカメラに乗っていたずれ。`mode` (`RELATIVE`/`ABSOLUTE`)・`scale`・`blender` (Blender 側のずれ: `location`・`pan_deg`・`tilt_deg`・`roll_deg`・`lens_mm`)・`iphone_rig` (iPhone の CTL: `position`・`yaw_deg`・`tilt_deg`・`roll_deg`・`focal_mm`・`fstop`・`focus_distance`、無ければ null)・`camera_parent`。**どれもカメラの動き (`actions.json`) に焼き込み済み**で、再生で足し直すものではない (どのずれで録ったかの記録) |
+| `placement` | object | 0.9.12 以降。再生中に「背景のオフセット」で置いた場所 (テイクごと)。`matrix` (置き場の Empty の 4×4 のワールド行列)・`front_distance` (人の居る所を決めた「手前の距離」)。無ければ録ったときの位置で再生・書き出しする |
 
 ### actions.json
 
@@ -242,6 +246,21 @@ NDI® is a registered trademark of Vizrt NDI AB. 詳しくは [ndi.video](https:
 `packet_count` 枚がそろわなかったフレームは捨ててください。
 
 ---
+
+## 5. アプリとアドオンの組み合わせ
+
+iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の OSC・NDI・UDP の形式でだけつながっています。
+**この形式が同じなら、アプリとアドオンの版はどう組み合わせても動きます。** どちらを先に更新してもかまいません。
+
+| 形式の版 | アプリ | アドオン | 変わったこと |
+| --- | --- | --- | --- |
+| 1 | 1.1、1.1.1 | 0.9.11、0.9.12 | (最初の版) |
+
+- 1.1 → 1.1.1 で変わったのは画面 (REC ボタンなど) だけ、0.9.11 → 0.9.12 で変わったのはテイクの置き場と記録だけで、どちらも形式 1 のまま
+- 形式を変えるときの決まり: OSC の引数は**末尾に足すだけ**で、前からの並びは変えない。受ける側は、知らない末尾の引数を読み飛ばし、
+  足した引数が来ない古い送り手でもこれまでどおり動く。深度の UDP は magic (`ARD1`〜`ARD3`) で見分けて、どれも読める
+- 形式を変えたら、この表に行を足し、アプリとアドオンの最低の組み合わせをここに書く
+- どの版で録ったかは、テイクの `take.json` の `device.app` (アプリの版) と `environment.addon` (アドオンの版) に残る
 
 ## 見本
 

@@ -985,8 +985,29 @@ def _shot_info(context, prefs):
     client = tracking.server.info_for(pose.client_id) if pose is not None else None
     slate = (prefs.slate_production, prefs.slate_scene, prefs.slate_cut, prefs.slate_take)
     people = {"creator": prefs.shot_creator, "operator": prefs.shot_operator}
-    return take.shot_info(context.scene, slate, prefs.shot_site, prefs.shot_host, ADDON_VERSION, people,
+    info = take.shot_info(context.scene, slate, prefs.shot_site, prefs.shot_host, ADDON_VERSION, people,
                           pose, client)
+    info["camera_offsets"] = _camera_offsets(context)
+    return info
+
+
+def _camera_offsets(context):
+    """録り始めにカメラに乗っていたずれ (take.json の camera_offsets)。どれもカメラの動きには焼き込み済みで、
+    再生で足し直すことはない (あとから「どのずれで録ったか」を確かめるための記録)"""
+    settings = context.scene.artrk
+    camera = settings.camera or context.scene.camera
+    rig = tracking._state.get("rig") if settings.use_rig else None
+    return {
+        "mode": settings.mode,
+        "scale": settings.scale,
+        "blender": {"location": [round(v, 4) for v in settings.ctl_location], "pan_deg": settings.ctl_pan,
+                    "tilt_deg": settings.ctl_tilt, "roll_deg": settings.ctl_roll, "lens_mm": settings.ctl_lens},
+        "iphone_rig": None if rig is None else {
+            "position": [round(v, 4) for v in rig.position], "yaw_deg": rig.yaw_deg, "tilt_deg": rig.tilt_deg,
+            "roll_deg": rig.roll_deg, "focal_mm": rig.focal_mm, "fstop": rig.fstop,
+            "focus_distance": rig.focus_distance},
+        "camera_parent": camera.parent.name if camera is not None and camera.parent is not None else None,
+    }
 
 
 def _slate_label(prefs):
@@ -1117,19 +1138,14 @@ class ARTRK_OT_take_anchor_add(bpy.types.Operator):
     bl_description = ("背景に対してテイク (人とカメラの動き) をずらすための Empty を、テイクの人の居る所 "
                       "(始めのフレームでカメラの「手前の距離」前、床の高さ) に置き、再生中のカメラをその子にする。"
                       "Empty を動かす・Z で回すと、カメラの動きはそのままで背景の中の場所がずれる。"
-                      "Empty の Y の矢印が始めのフレームでカメラの見る向き")
+                      "Empty の Y の矢印が始めのフレームでカメラの見る向き。"
+                      "置いた場所はテイクごとに take.json に残り、書き出しにも使う")
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         if not player.active and not _start_player(self, context):
             return {"CANCELLED"}
-        anchor = bpy.data.objects.get(take.ANCHOR_NAME)
-        if anchor is None:
-            anchor = bpy.data.objects.new(take.ANCHOR_NAME, None)
-            anchor.empty_display_type = "ARROWS"
-            anchor.empty_display_size = 0.5
-            context.scene.collection.objects.link(anchor)
-        anchor.rotation_mode = "XYZ"
+        anchor = take.ensure_anchor(context.scene)
         anchor.matrix_world = player.pivot
         _anchor_restart(self, context)
         _use_material_view(self, context)
@@ -1148,6 +1164,25 @@ class ARTRK_OT_take_anchor_cursor(bpy.types.Operator):
         if anchor is None:
             return {"CANCELLED"}
         anchor.location = context.scene.cursor.location
+        return {"FINISHED"}
+
+
+class ARTRK_OT_take_anchor_previous(bpy.types.Operator):
+    bl_idname = "artrk.take_anchor_previous"
+    bl_label = "前の置き場を使う"
+    bl_description = ("このテイクを再生する前に .blend にあった置き場の位置に戻し、このテイクに残す。"
+                      "置き場がテイクごとになる前 (0.9.11 まで) に合わせた置き場を引き継ぐときに使う")
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, _context):
+        return player.active and player.previous_anchor is not None
+
+    def execute(self, context):
+        anchor = take.ensure_anchor(context.scene)
+        anchor.matrix_world = player.previous_anchor
+        _anchor_restart(self, context)
+        player.previous_anchor = None
         return {"FINISHED"}
 
 
@@ -1863,6 +1898,11 @@ class ARTRK_PT_controls(_ARtrkSubPanel, bpy.types.Panel):
         row.operator("artrk.ctl_reset", text="向きを戻す").target = "ROTATION"
         row.operator("artrk.ctl_reset", text="全部戻す").target = "ALL"
         row.operator("artrk.ctl_keyframe", icon="KEY_HLT")
+        if player.active:
+            # 録ったときのずれはカメラの動きに焼き込み済み。再生中に変えても効かない
+            box = layout.box()
+            box.label(text="テイクの再生中は効きません (録ったときのずれは焼き込み済み)", icon="INFO")
+            box.label(text="テイクの位置は「録画・テイク > 背景のオフセット」で動かす")
 
 
 class ARTRK_PT_ndi_in(_ARtrkPanel, bpy.types.Panel):
@@ -2219,6 +2259,10 @@ class ARTRK_PT_take_anchor(_ARtrkSubPanel, bpy.types.Panel):
         layout.operator("artrk.take_anchor_remove", icon="X")
         if not player.active:
             layout.label(text="オフセットが効くのはテイクの再生・書き出しの間だけ", icon="INFO")
+        else:
+            layout.label(text="置いた場所はこのテイクに残る (ほかのテイクには効かない)", icon="INFO")
+            if player.previous_anchor is not None:
+                layout.operator("artrk.take_anchor_previous", icon="RECOVER_LAST")
 
 
 class ARTRK_PT_take_bridge(_ARtrkSubPanel, bpy.types.Panel):
@@ -2338,6 +2382,11 @@ def _on_save_pre(*_args):
     # 受けている映像のコマが .blend に埋め込まれないようにする (ndi_input.blank_live_images)。
     # 深度スナップショット (ARtrk Depth Snapshot) は自分で止めたコマなので残す
     ndi_input.blank_live_images((ndi_input.IMAGE_NAME, depth_input.MASK_IMAGE_NAME))
+    # 再生中に動かした置き場を、そのテイクの take.json にも残す (再生を止めずに保存して閉じても失わない)
+    try:
+        player.save_placement()
+    except Exception as exc:
+        print("trkAR: テイクの置き場を残せません: %s" % exc)
 
 
 classes = (
@@ -2373,6 +2422,7 @@ classes = (
     ARTRK_OT_take_live,
     ARTRK_OT_take_anchor_add,
     ARTRK_OT_take_anchor_cursor,
+    ARTRK_OT_take_anchor_previous,
     ARTRK_OT_take_anchor_remove,
     ARTRK_OT_take_render,
     ARTRK_OT_take_open,

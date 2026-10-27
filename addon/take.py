@@ -300,12 +300,15 @@ def _action_matrix(action, frame):
     return Matrix.Translation(location) @ rotation.to_matrix().to_4x4()
 
 
-def anchor_pivot(action, frame, distance):
+def anchor_pivot(action, frame, distance, parent_world=None):
     """置き場の基準にするテイクの位置と向き (Matrix)。位置は始めのフレームでカメラの `distance` 前
     (人の居る所) を床 (Z=0) に下ろした所、+Y はそのときカメラが見ている向き (水平)。
     置き場をこれに重ねれば録ったときのまま、動かせばその分だけ、回せばここを中心に回る。
-    テイクが違っても置き場の Y の矢印がカメラの見る向きになる。"""
+    テイクが違っても置き場の Y の矢印がカメラの見る向きになる。
+    parent_world: 録ったときのカメラの親の空間 (親の matrix_world @ matrix_parent_inverse)。親が無ければ None"""
     basis = _action_matrix(action, frame)
+    if parent_world is not None:
+        basis = parent_world @ basis
     forward = basis.to_3x3() @ Vector((0.0, 0.0, -1.0))
     forward.z = 0.0
     if forward.length < 1e-4:
@@ -315,6 +318,91 @@ def anchor_pivot(action, frame, distance):
     point.z = 0.0
     heading = math.atan2(forward.y, forward.x) - math.pi / 2.0
     return Matrix.Translation(point) @ Matrix.Rotation(heading, 4, "Z")
+
+
+# ---- テイクの置き場 (背景のオフセット) はテイクごとに take.json の placement に残す ----
+# 以前は .blend に 1 つだけの Empty の位置を全部のテイクで使っていたので、別のテイクで合わせた置き場に
+# 新しいテイクが移され、録ったときと違う所からカメラが始まっていた。
+
+def ensure_anchor(scene):
+    anchor = bpy.data.objects.get(ANCHOR_NAME)
+    if anchor is None:
+        anchor = bpy.data.objects.new(ANCHOR_NAME, None)
+        anchor.empty_display_type = "ARROWS"
+        anchor.empty_display_size = 0.5
+        scene.collection.objects.link(anchor)
+    anchor.rotation_mode = "XYZ"
+    return anchor
+
+
+def placement_of(info):
+    """take.json の placement: {"matrix": 置き場の matrix_world (4x4), "front_distance": 基準にした手前の距離}"""
+    placement = info.get("placement")
+    if not placement or "matrix" not in placement:
+        return None
+    return placement
+
+
+def save_placement(path, placement):
+    """take.json の placement を書き換える (None なら消す)。変わらなければ書かない"""
+    try:
+        info = load_info(path)
+    except (OSError, ValueError):
+        return
+    if info.get("placement") == placement:
+        return
+    if placement is None:
+        info.pop("placement", None)
+    else:
+        info["placement"] = placement
+    with open(os.path.join(path, "take.json"), "w", encoding="utf-8") as f:
+        json.dump(info, f, ensure_ascii=False, indent=2)
+
+
+def _matrix_list(matrix):
+    return [[round(v, 6) for v in row] for row in matrix]
+
+
+def _same_matrix(a, b, tolerance=1e-4):
+    return all(abs(a[i][j] - b[i][j]) <= tolerance for i in range(4) for j in range(4))
+
+
+def parent_world_of(camera):
+    """カメラの親の空間 (録ったアクションの座標の基準)。置き場の子になったまま保存された .blend
+    (再生中に保存した) なら、元の親は分からないので親なしとみなす"""
+    if camera.parent is None or camera.parent.name == ANCHOR_NAME:
+        return Matrix()
+    return camera.parent.matrix_world @ camera.matrix_parent_inverse
+
+
+def place_take(scene, camera, action, info, distance):
+    """再生・書き出し・クラウドのレンダーで、テイクを背景の中に置く (カメラを置き場の子にする)。
+    置き場が take.json にあればそこへ、無ければ録ったときの位置 (置き場があっても基準の点に戻す)。
+    返り値 (pivot, 使った手前の距離, 戻す前の置き場)。戻す前の置き場は、take.json に置き場が無いのに .blend の
+    置き場が基準の点からずれていたとき、その matrix_world (前の作りで合わせた置き場を「前の置き場を使う」で戻せる)。
+    カメラの親は呼ぶ前の状態を見るので、元の親は呼んだ側で控えておく"""
+    placement = placement_of(info)
+    if placement is not None:
+        distance = placement.get("front_distance", distance)
+    parent_world = parent_world_of(camera)
+    pivot = anchor_pivot(action, info["frame_start"], distance, parent_world)
+    anchor = bpy.data.objects.get(ANCHOR_NAME)
+    previous = None
+    if placement is not None:
+        anchor = ensure_anchor(scene)
+        anchor.matrix_world = Matrix(placement["matrix"])
+    elif anchor is not None:
+        if not _same_matrix(anchor.matrix_world, pivot):
+            previous = anchor.matrix_world.copy()
+        anchor.matrix_world = pivot
+    if anchor is not None and anchor is not camera:
+        camera.parent = anchor
+        # 置き場が基準の点にあれば、録ったときの (元の親から見た) 位置と同じになる
+        camera.matrix_parent_inverse = pivot.inverted() @ parent_world
+    elif camera.parent is not None and camera.parent.name == ANCHOR_NAME:
+        camera.parent = None
+        camera.matrix_parent_inverse = Matrix()
+    return pivot, distance, previous
 
 
 class Recorder:
@@ -545,8 +633,12 @@ class Player:
         self.last_error = ""
         self._loaded = None
         self._restore = None
-        # 再生中のテイクの置き場の基準 (anchor_pivot)
+        # 再生中のテイクの置き場の基準 (anchor_pivot) と、そのときの手前の距離
         self.pivot = Matrix()
+        self.front_distance = 1.0
+        # 置き場を基準の点に戻す前の位置 (前の作りで合わせた置き場。「前の置き場を使う」で戻す) と、そのテイク
+        self.previous_anchor = None
+        self.previous_for = ""
 
     @property
     def active(self):
@@ -567,14 +659,16 @@ class Player:
                 "テイクのアクション %s がこの .blend にも actions.json にもありません"
                 % info.get("action")
             )
+        # 置き場の子のまま保存された .blend (再生中に保存) なら、元の親は無いものとして戻す
+        leftover = camera.parent is not None and camera.parent.name == ANCHOR_NAME
         self._restore = {
             "camera": camera.name,
             "action": _assign(camera, action),
             "lens_action": _assign(camera.data, lens_action) if lens_action is not None else None,
             "has_lens": lens_action is not None,
             "lock": scene.render.use_lock_interface,
-            "parent": camera.parent.name if camera.parent is not None else "",
-            "parent_inverse": camera.matrix_parent_inverse.copy(),
+            "parent": "" if leftover or camera.parent is None else camera.parent.name,
+            "parent_inverse": Matrix() if leftover else camera.matrix_parent_inverse.copy(),
             "rotation_mode": camera.rotation_mode,
         }
         # 回転の F カーブと同じ回転モードにする (別の .blend のオイラーのカメラだと、
@@ -584,13 +678,15 @@ class Player:
             camera.rotation_mode = "QUATERNION"
         elif "rotation_euler" in paths and camera.rotation_mode in ("QUATERNION", "AXIS_ANGLE"):
             camera.rotation_mode = "XYZ"
-        # 置き場があれば再生中だけその子にする (アクションは録ったままのワールド座標なので、
-        # 置き場が基準の点にあるとき元の位置と同じになるよう親の逆行列で戻しておく)
-        self.pivot = anchor_pivot(action, info["frame_start"], scene.artrk.ndi_in_front_distance)
-        anchor = bpy.data.objects.get(ANCHOR_NAME)
-        if anchor is not None and anchor is not camera:
-            camera.parent = anchor
-            camera.matrix_parent_inverse = self.pivot.inverted()
+        # 置き場はテイクごと (take.json の placement)。無ければ録ったときの位置で再生する
+        self.pivot, self.front_distance, previous = place_take(scene, camera, action, info,
+                                                               scene.artrk.ndi_in_front_distance)
+        # 同じテイクを再生し直したとき (置き場を作った・書き出した) は前の置き場を覚え直さない
+        if previous is not None:
+            self.previous_anchor = previous
+        elif path != self.previous_for:
+            self.previous_anchor = None
+        self.previous_for = path
         self.path = path
         self.info = info
         self.last_error = ""
@@ -604,9 +700,21 @@ class Player:
             scene.frame_set(scene.frame_start)
         self.load(scene, scene.frame_current)
 
+    def save_placement(self):
+        """今の置き場をこのテイクの take.json に残す (基準の点のままなら消す = 録ったときの位置)"""
+        if self.info is None or not self.path:
+            return
+        anchor = bpy.data.objects.get(ANCHOR_NAME)
+        if anchor is None or _same_matrix(anchor.matrix_world, self.pivot):
+            save_placement(self.path, None)
+        else:
+            save_placement(self.path, {"matrix": _matrix_list(anchor.matrix_world),
+                                       "front_distance": self.front_distance})
+
     def stop(self, scene):
         if self._on_frame in bpy.app.handlers.frame_change_pre:
             bpy.app.handlers.frame_change_pre.remove(self._on_frame)
+        self.save_placement()
         restore, self._restore = self._restore, None
         self.info = None
         if restore is None:

@@ -104,7 +104,8 @@ Finder や Dock から起動した Blender は `PATH` が短いので、`/opt/ho
 ## 2. テイクのフォルダ
 
 テイクは `録画・テイク > 録画・書き出しの設定` の「テイクのフォルダ」に、1 テイク 1 フォルダで置かれます
-(既定は .blend の隣の `artrk_takes/`。保存していなければ macOS は `~/Movies/ARtrk Takes`、Windows は `~/Videos/ARtrk Takes`)。
+(既定は .blend の隣の `trkar_takes/`。保存していなければ macOS は `~/Movies/trkAR Takes`、Windows は `~/Videos/trkAR Takes`。
+アドオン 0.10.0 より前の既定は `artrk_takes/`・`ARtrk Takes` で、そのフォルダがあって新しい方が無ければ続けてそちらを使います)。
 フォルダ名は `take_YYYYMMDD_HHMMSS` (録り始めの日時、PC の現地時刻) です。
 
 ```
@@ -137,7 +138,7 @@ take_20261021_120000/
 | `slate` | object | `production`・`scene`・`cut`・`take` (int、0 は未設定)・`label` (例 `S01C01T01`) |
 | `location` | object | `blend` (背景の .blend の名前)・`bpy_scene` (Blender のシーン名) |
 | `environment` | object | `site` (撮影環境)・`host` (PC の呼び名)・`hostname`・`os`・`blender`・`addon` |
-| `device` | object | 撮った端末。`system` (`ARtrk`)・`model`・`identifier`・`os`・`app`・`device_name`・`client_id`・`fps`・`hfov` (水平画角、度)・`tc_source` (`internal` か `ltc`) |
+| `device` | object | 撮った端末。`system` (`trkAR`。0.10.0 より前は `ARtrk`)・`model`・`identifier`・`os`・`app`・`device_name`・`client_id`・`fps`・`hfov` (水平画角、度)・`tc_source` (`internal` か `ltc`) |
 | `people` | object | `creator`・`operator` |
 | `render` | object | 書き出したあとだけ。`format` (`MP4`/`PNG`)・`width`・`height`・`fps`・`frame_start`・`frame_end`・`blend`・`kept` (控えのファイル名) |
 | `camera_offsets` | object | 0.9.12 以降。録り始めにカメラに乗っていたずれ。`mode` (`RELATIVE`/`ABSOLUTE`)・`scale`・`blender` (Blender 側のずれ: `location`・`pan_deg`・`tilt_deg`・`roll_deg`・`lens_mm`)・`iphone_rig` (iPhone の CTL: `position`・`yaw_deg`・`tilt_deg`・`roll_deg`・`focal_mm`・`fstop`・`focus_distance`、無ければ null)・`camera_parent`。**どれもカメラの動き (`actions.json`) に焼き込み済み**で、再生で足し直すものではない (どのずれで録ったかの記録) |
@@ -146,11 +147,11 @@ take_20261021_120000/
 ### actions.json
 
 ```json
-{"action": {"name": "ARtrk take_…", "curves": [
+{"action": {"name": "trkAR take_…", "curves": [
    {"data_path": "location", "array_index": 0,
     "points": [{"co": [frame, value], "interpolation": "BEZIER", "easing": "AUTO",
                 "handle_left": [x, y], "handle_right": [x, y], ...}, ...]}, ...]},
- "lens_action": {"name": "ARtrk take_… Lens", "curves": [{"data_path": "lens", ...}]}}
+ "lens_action": {"name": "trkAR take_… Lens", "curves": [{"data_path": "lens", ...}]}}
 ```
 
 `data_path` は Blender のカメラの `location` (m、Blender のワールド座標、Z 上)・`rotation_euler` (ラジアン)・`lens` (mm) などです。
@@ -219,8 +220,10 @@ Blender に入れるときはワールドを X 軸まわりに +90° 回しま�
 
 | ソース名 | 中身 |
 | --- | --- |
-| `<端末名> (ARtrk)` | カメラの映像 (CAM)。人物マスクを選んでいればアルファ付き |
-| `<端末名> (ARtrk-Depth)` | 深度 (DPT、16bit)。NDI の圧縮がかかるので、正確な値が要るなら下の UDP を使う |
+| `<端末名> (trkAR)` | カメラの映像 (CAM)。人物マスクを選んでいればアルファ付き |
+| `<端末名> (trkAR-Depth)` | 深度 (DPT、16bit)。メタデータは `<trkARDepth …/>`。NDI の圧縮がかかるので、正確な値が要るなら下の UDP を使う |
+
+アプリ 1.1.1 までは `(ARtrk)`・`(ARtrk-Depth)`・`<ARtrkDepth …/>` (名前を trkAR に揃える前)。受ける側はどちらも受けてください。
 
 NDI® is a registered trademark of Vizrt NDI AB. 詳しくは [ndi.video](https://ndi.video/) を参照してください。
 
@@ -255,8 +258,12 @@ iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の 
 | 形式の版 | アプリ | アドオン | 変わったこと |
 | --- | --- | --- | --- |
 | 1 | 1.1、1.1.1 | 0.9.11、0.9.12 | (最初の版) |
+| 1 (名前を trkAR に) | 1.1.2 | 0.10.0 | NDI のソース名とメタデータ・テイクの名前・アドオンの id (`artrk_camera` → `trkar_camera`) を trkAR に揃えた。OSC と UDP は同じ |
 
 - 1.1 → 1.1.1 で変わったのは画面 (REC ボタンなど) だけ、0.9.11 → 0.9.12 で変わったのはテイクの置き場と記録だけで、どちらも形式 1 のまま
+- アドオン 0.10.0 は古い名前 (`(ARtrk)`、`<ARtrkDepth>`、`artrk_takes/`、0.9.x で保存した .blend の設定) も読む。
+  アドオン 0.9.x とアプリ 1.1.2 の組み合わせでは、深度の **NDI** だけ読めない (メタデータの名前が変わったため。深度の UDP は読める)
+- アドオンは id が変わったので、0.9.x を入れている場合は 0.10.0 を入れてから 0.9.x (`trkAR Camera`、id `artrk_camera`) を外す
 - 形式を変えるときの決まり: OSC の引数は**末尾に足すだけ**で、前からの並びは変えない。受ける側は、知らない末尾の引数を読み飛ばし、
   足した引数が来ない古い送り手でもこれまでどおり動く。深度の UDP は magic (`ARD1`〜`ARD3`) で見分けて、どれも読める
 - 形式を変えたら、この表に行を足し、アプリとアドオンの最低の組み合わせをここに書く

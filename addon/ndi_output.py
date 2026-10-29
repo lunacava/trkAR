@@ -57,6 +57,9 @@ class NDIOutput:
         self.fps = 30.0
         self.transparent = False
         self.frames_sent = 0
+        # 実際の fps (描画 / 送出)
+        self.draw_rate = ndi.Rate()
+        self.send_rate = ndi.Rate()
         self.last_error = ""
         self._handle = None
         self._last_draw = 0.0
@@ -82,9 +85,11 @@ class NDIOutput:
         self.fps = fps
         self.transparent = transparent
         self.frames_sent = 0
+        self.draw_rate.reset()
+        self.send_rate.reset()
         self.last_error = ""
         self._last_draw = 0.0
-        self._thread = threading.Thread(target=self._send_loop, name="ARtrkNDI", daemon=True)
+        self._thread = threading.Thread(target=self._send_loop, name="TrkARNDI", daemon=True)
         self._thread.start()
         self._handle = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), "WINDOW", "POST_PIXEL")
         bpy.app.timers.register(self._tick, persistent=True)
@@ -141,7 +146,7 @@ class NDIOutput:
         if now - self._last_draw < 0.9 / self.fps:
             return
         scene = context.scene
-        camera = scene.artrk.camera or scene.camera
+        camera = scene.trkar.camera or scene.camera
         if camera is None or camera.type != "CAMERA":
             self.last_error = "送出するカメラがありません"
             return
@@ -192,6 +197,7 @@ class NDIOutput:
             frame = self._read(target)
         t3 = time.perf_counter()
         self._timing(t2 - t1, (t1 - t0) + (t3 - t2))
+        self.draw_rate.tick()
         if frame is None:
             return
         try:
@@ -228,5 +234,6 @@ class NDIOutput:
                 pixels = np.ascontiguousarray(view[::-1])
                 sender.send_rgba(pixels, self.width, self.height, self.fps, self.transparent)
                 self.frames_sent += 1
+                self.send_rate.tick()
             except Exception as exc:
                 self.last_error = str(exc)

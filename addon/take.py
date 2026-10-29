@@ -1,8 +1,9 @@
 """録画 (REC) とテイクの再生。
 
-REC 中はタイムラインを再生し、カメラの動きをテイク用のアクションにキーフレームで入れる
-(tracking.tick の「再生中にキーフレーム記録」)。同時にフレームが進むたびに、表示中の実写
-(アルファ込み) と深度スクリーンの形をテイクのフォルダへ書く:
+REC 中はタイムラインを実時間で再生し、届いた実写 (アルファ込み)・深度スクリーンの形・カメラの姿勢を
+撮影時刻 (iPhone の ARFrame.timestamp) つきで全部溜める。止めたら、テイクの各フレームに撮影時刻の
+いちばん近い実写を 1 枚選び、カメラの動きはその実写の撮影時刻の姿勢でテイク用のアクションにキーを打つ
+(plan_take / bake_keys)。テイクのフォルダには次を書く:
 
     <テイク>/take.json          fps・フレーム範囲・カメラ・アクション名と、撮影の来歴
                                 (スレート・場所・撮影環境・撮った機種・製作者。shot_info)
@@ -12,9 +13,10 @@ REC 中はタイムラインを再生し、カメラの動きをテイク用の�
     <テイク>/render.mp4         書き出し (PNG 連番なら render/0001.png …)
 
 テイク再生中は受信を止め、フレームが変わるたびに同じフレームの実写と深度を読み込む。
-スクリーン類は "ARtrk NDI" などライブと同じ画像を見ているので、そのまま再生・レンダーできる。
+スクリーン類は "trkAR NDI" などライブと同じ画像を見ているので、そのまま再生・レンダーできる。
 """
 
+import bisect
 import json
 import math
 import os
@@ -31,22 +33,34 @@ import bpy
 import numpy as np
 from mathutils import Euler, Matrix, Quaternion, Vector
 
-# 再生中だけカメラをこの Empty の子にする。動かす・回すとテイクのカメラの軌跡ごと背景の中でずれる
-ANCHOR_NAME = "ARtrk テイクの置き場"
+try:
+    from . import tracking
+except ImportError:  # アドオンの外で単独に読むとき (render_clay.py・クラウドの書き出し)。録画 (Recorder) は使わない
+    tracking = None
 
-# 書き込み待ちがこれ以上たまったらそのフレームは捨てる (後で前のフレームで埋める)
+# 再生中だけカメラをこの Empty の子にする。動かす・回すとテイクのカメラの軌跡ごと背景の中でずれる
+ANCHOR_NAME = "trkAR テイクの置き場"
+
+# 書き込み待ちがこれ以上たまったら届いた実写・深度を捨てる (そのフレームは前後の実写で埋まる)
 MAX_IN_FLIGHT = 12
 # 録画中はタイムラインの終わりをここまで延ばす (分)
 MAX_MINUTES = 30
+# 名前を ARtrk から変える前のテイクのフォルダ (2026-10-29 まで)。あればそのまま使う
+LEGACY_TAKES = "artrk_takes"
 
 
 def takes_folder(configured):
-    """テイクを置くフォルダ。空なら .blend の隣の artrk_takes (保存していなければ ~/Movies/ARtrk Takes、Windows は ~/Videos)。"""
+    """テイクを置くフォルダ。空なら .blend の隣の trkar_takes (保存していなければ ~/Movies/trkAR Takes、Windows は ~/Videos)。
+    名前を ARtrk から変える前のフォルダ (artrk_takes、ARtrk Takes) があって新しい方が無ければ、そちらを使い続ける"""
     if not configured:
-        configured = "//artrk_takes"
+        configured = "//trkar_takes"
+        if bpy.data.filepath and not os.path.isdir(bpy.path.abspath(configured)) \
+                and os.path.isdir(bpy.path.abspath("//" + LEGACY_TAKES)):
+            configured = "//" + LEGACY_TAKES
     if configured.startswith("//") and not bpy.data.filepath:
-        default = "~/Videos/ARtrk Takes" if sys.platform == "win32" else "~/Movies/ARtrk Takes"
-        return os.path.expanduser(default)
+        base = "~/Videos/" if sys.platform == "win32" else "~/Movies/"
+        default, legacy = os.path.expanduser(base + "trkAR Takes"), os.path.expanduser(base + "ARtrk Takes")
+        return legacy if os.path.isdir(legacy) and not os.path.isdir(default) else default
     return os.path.normpath(bpy.path.abspath(configured))
 
 
@@ -136,7 +150,7 @@ def _device_info(pose, client):
     if client is not None and client.system_version:
         system_os = _or_none("%s %s" % (client.system_name, client.system_version))
     return {
-        "system": "ARtrk" if pose is not None or client is not None else None,
+        "system": "trkAR" if pose is not None or client is not None else None,
         "model": client.model if client is not None else None,
         "identifier": _or_none(client.identifier) if client is not None else None,
         "os": system_os,
@@ -176,7 +190,7 @@ def shot_info(scene, slate, site, host, addon, people, pose=None, client=None):
 
 
 def _camera_of(scene):
-    camera = scene.artrk.camera or scene.camera
+    camera = scene.trkar.camera or scene.camera
     return camera if camera is not None and camera.type == "CAMERA" else None
 
 
@@ -405,7 +419,234 @@ def place_take(scene, camera, action, info, distance):
     return pivot, distance, previous
 
 
+# 録画中に届いた実写・深度を一旦置くフォルダ (テイクの中)。止めたらフレームの名前に付け替えて消す
+STAGING = ".incoming"
+# 映像・深度の撮影時刻と姿勢の撮影時刻の時計がこれ以上違えば別の時計 (iPhone 以外のソース、古いアプリ) とみなし、
+# PC に届いた時刻で並べる (秒)
+CLOCK_LIMIT = 10.0
+
+
+class Entry:
+    """録画中に届いた実写・深度 1 件。capture は撮影時刻 (秒) か None、arrival は届いた時刻 (time.monotonic)"""
+
+    __slots__ = ("capture", "arrival", "name", "ok", "time")
+
+    def __init__(self, capture, arrival, name):
+        self.capture = capture
+        self.arrival = arrival
+        self.name = name
+        self.ok = False
+        self.time = None
+
+
+def _median(values):
+    values = sorted(values)
+    return values[len(values) // 2] if values else None
+
+
+def _clock_delta(pairs):
+    """[(撮影時刻か None, 届いた時刻)] の (撮影時刻 − 届いた時刻) の中央値。撮影時刻が無ければ None"""
+    return _median([c - a for c, a in pairs if c is not None])
+
+
+def _place_on_clock(entries, reference):
+    """entries の time を基準の時計 (姿勢の撮影時刻) で埋める。撮影時刻が同じ時計ならそのまま、
+    違う時計か無ければ届いた時刻を基準の時計に直したもの。撮影時刻をそのまま使えたかを返す"""
+    delta = _clock_delta([(e.capture, e.arrival) for e in entries])
+    same = delta is not None and abs(delta - reference) < CLOCK_LIMIT
+    for e in entries:
+        e.time = e.capture if same and e.capture is not None else e.arrival + (delta if same else reference)
+    return same
+
+
+def _nearest(times, t):
+    """昇順の times の中で t にいちばん近い添字"""
+    i = bisect.bisect_left(times, t)
+    if i <= 0:
+        return 0
+    if i >= len(times):
+        return len(times) - 1
+    return i if times[i] - t < t - times[i - 1] else i - 1
+
+
+def _interpolate(samples, times, t):
+    """姿勢 (PoseSample、times は同じ並びの時刻) の t での (位置, 回転, レンズ)。端は端の値"""
+    i = bisect.bisect_right(times, t)
+    if i <= 0:
+        s = samples[0]
+        return s.location, s.rotation, s.lens
+    if i >= len(samples):
+        s = samples[-1]
+        return s.location, s.rotation, s.lens
+    a, b = samples[i - 1], samples[i]
+    span = times[i] - times[i - 1]
+    f = (t - times[i - 1]) / span if span > 0 else 1.0
+    return a.location.lerp(b.location, f), a.rotation.slerp(b.rotation, f), a.lens
+
+
+def plan_take(fps, poses, video, depth, start, stop, pose_offset=0.0, depth_offset=0.0, smoothing=0.0):
+    """録画中に溜めたものから、テイクのフレームごとの (実写の添字か None, 深度の添字か None, 位置, 回転, レンズ)
+    と集計を作る。start / stop は (録り始め・止めたときに表示していた実写の撮影時刻か None, その瞬間の monotonic)。
+
+    - 姿勢の撮影時刻 (ARFrame.timestamp) を基準の時計にする。映像・深度も同じ時計ならその撮影時刻を、
+      違えば PC に届いた時刻をこの時計に直して使う
+    - フレーム i の時刻は 録り始めの実写の撮影時刻 + i / fps。実写はその時刻にいちばん近い 1 枚
+    - カメラはその実写の撮影時刻 − pose_offset の姿勢 (前後 2 件から補間)。実写が無ければフレームの時刻の姿勢
+    - 深度はその実写の撮影時刻 − depth_offset 以前でいちばん新しいもの (ライブの「映像に合わせる」と同じ)
+    """
+    poses = [p for p in poses if p.location is not None]
+    reference = _clock_delta([(p.frame_time, p.received_at) for p in poses])
+    pose_capture = reference is not None
+    if reference is None:
+        reference = _clock_delta([(e.capture, e.arrival) for e in video]) or 0.0
+    for p in poses:
+        if p.frame_time is None:
+            p.frame_time = p.received_at + reference
+    poses.sort(key=lambda p: p.frame_time)
+    if smoothing > 0.0 and poses:
+        # ライブのスムージング (tick ごとに前の値へ寄せる) と同じことを届いた順に
+        location, rotation = poses[0].location, poses[0].rotation
+        for p in poses:
+            location = location.lerp(p.location, 1.0 - smoothing)
+            rotation = rotation.slerp(p.rotation, 1.0 - smoothing)
+            p.location, p.rotation = location, rotation
+    pose_times = [p.frame_time for p in poses]
+
+    video = [e for e in video if e.ok]
+    depth = [e for e in depth if e.ok]
+    video_same = _place_on_clock(video, reference) if video else None
+    depth_same = _place_on_clock(depth, reference) if depth else None
+    video.sort(key=lambda e: e.time)
+    depth.sort(key=lambda e: e.time)
+    video_times = [e.time for e in video]
+    depth_times = [e.time for e in depth]
+
+    def moment(mark):
+        """録り始め・止めた瞬間に見えていたものの時刻 (基準の時計)"""
+        shown, mono = mark
+        if video and video_same and shown is not None:
+            return shown
+        if video:
+            return mono + (_clock_delta([(e.capture, e.arrival) for e in video]) if video_same else reference)
+        return mono + reference
+
+    t0, t1 = moment(start), moment(stop)
+    last = video_times[-1] if video else (pose_times[-1] if poses else None)
+    if last is not None:
+        t1 = min(t1, last)
+    count = max(1, int(math.floor((t1 - t0) * fps + 1e-6)) + 1)
+    count = min(count, int(fps * 60 * MAX_MINUTES))
+
+    frames, used, repeated, worst = [], set(), 0, 0.0
+    previous = None
+    for i in range(count):
+        t = t0 + i / fps
+        vi = di = None
+        when = t
+        if video:
+            vi = _nearest(video_times, t)
+            when = video_times[vi]
+            worst = max(worst, abs(when - t))
+            repeated += vi == previous
+            previous = vi
+            used.add(vi)
+        if depth:
+            target = when - depth_offset + 0.001
+            di = max(0, bisect.bisect_right(depth_times, target) - 1)
+        location = rotation = lens = None
+        if poses:
+            location, rotation, lens = _interpolate(poses, pose_times, when - pose_offset)
+        frames.append((vi, di, location, rotation, lens))
+
+    rate = None
+    if len(pose_times) > 10:
+        span = pose_times[-1] - pose_times[0]
+        rate = round((len(pose_times) - 1) / span, 1) if span > 0 else None
+    stats = {
+        # capture_time: 実写と姿勢を撮影時刻で合わせた / arrival: PC に届いた時刻で並べた (時計が違う・古いアプリ)
+        "method": "capture_time" if (video_same if video else pose_capture) else "arrival",
+        "video_received": len(video),
+        "video_repeated": repeated,
+        "video_unused": len([1 for e in video if t0 - 0.5 / fps <= e.time <= t1 + 0.5 / fps]) - len(used)
+        if video else 0,
+        "video_max_error_ms": round(worst * 1000.0, 1),
+        "depth_received": len(depth),
+        "depth_capture_time": depth_same,
+        "pose_rate_hz": rate,
+        "pose_offset_ms": round(pose_offset * 1000.0, 1),
+    }
+    return frames, video, depth, stats
+
+
+def _rotation_values(camera, rotation, previous):
+    """回転 (Quaternion) をカメラの rotation_mode の値に。オイラーは前のフレームと連続になるように"""
+    mode = camera.rotation_mode
+    if mode == "QUATERNION":
+        if previous is not None and rotation.dot(Quaternion(previous)) < 0.0:
+            rotation = -rotation
+        return "rotation_quaternion", tuple(rotation)
+    if mode == "AXIS_ANGLE":
+        axis, angle = rotation.to_axis_angle()
+        return "rotation_axis_angle", (angle, axis.x, axis.y, axis.z)
+    euler = rotation.to_euler(mode, Euler(previous, mode)) if previous is not None else rotation.to_euler(mode)
+    return "rotation_euler", tuple(euler)
+
+
+def _put_curves(fcurves, path, frames, columns):
+    """frames と、同じ並びの値の列 (配列の要素ごと) を F カーブにまとめて入れる"""
+    for index, values in enumerate(columns):
+        fc = fcurves.find(path, index=index) or fcurves.new(path, index=index)
+        fc.keyframe_points.clear()
+        fc.keyframe_points.add(len(frames))
+        co = [0.0] * (2 * len(frames))
+        co[0::2] = frames
+        co[1::2] = values
+        fc.keyframe_points.foreach_set("co", co)
+        fc.update()
+
+
+def bake_keys(camera, action, lens_action, start_frame, frames):
+    """plan_take のフレームごとの姿勢・レンズを、カメラ (オブジェクト) とレンズのアクションへ入れる。
+    カメラに親があれば、親の今の位置から見た値にする (ライブで matrix_world に書いてキーを打つのと同じ)"""
+    keyed = [(start_frame + i, f) for i, f in enumerate(frames) if f[2] is not None]
+    if not keyed:
+        return
+    parent_inverse = None
+    if camera.parent is not None:
+        parent_inverse = (camera.parent.matrix_world @ camera.matrix_parent_inverse).inverted()
+    numbers, locations, rotations = [], [], []
+    path, previous = None, None
+    for number, (_vi, _di, location, rotation, _lens) in keyed:
+        world = Matrix.Translation(location) @ rotation.to_matrix().to_4x4()
+        basis = parent_inverse @ world if parent_inverse is not None else world
+        loc, rot, _scale = basis.decompose()
+        path, previous = _rotation_values(camera, rot, previous)
+        numbers.append(float(number))
+        locations.append(tuple(loc))
+        rotations.append(previous)
+    fcurves = _new_fcurves(action, "OBJECT")
+    _put_curves(fcurves, "location", numbers, list(zip(*locations)))
+    _put_curves(fcurves, path, numbers, list(zip(*rotations)))
+
+    lenses = [f[4] for _n, f in keyed]
+    if camera.type != "CAMERA" or lens_action is None or not any(lens is not None for lens in lenses):
+        return
+    lenses = [lens or next(v for v in lenses if v is not None) for lens in lenses]
+    lens_curves = _new_fcurves(lens_action, "CAMERA")
+    if any(lens[4] for lens in lenses):
+        _put_curves(lens_curves, "lens", numbers, [[lens[0] for lens in lenses]])
+    if any(lens[5] for lens in lenses):
+        _put_curves(lens_curves, "dof.use_dof", numbers, [[float(lens[1]) for lens in lenses]])
+        _put_curves(lens_curves, "dof.aperture_fstop", numbers, [[lens[2] for lens in lenses]])
+        _put_curves(lens_curves, "dof.focus_distance", numbers, [[lens[3] for lens in lenses]])
+
+
 class Recorder:
+    """REC。録画中はタイムラインを実時間で再生し (シーンのアニメーションも見え方もライブのまま)、
+    届いた実写・深度・姿勢を撮影時刻つきで全部溜める。止めたら plan_take でテイクの各フレームに
+    撮影時刻のいちばん近い実写を 1 枚選び、カメラのキーはその実写の撮影時刻の姿勢で打つ。
+    実写と CG のカメラが必ず同じ瞬間になり、Blender が重くて再生のフレームが飛んでも欠けない。"""
+
     def __init__(self, ndi_in, depth_in):
         self.ndi_in = ndi_in
         self.depth_in = depth_in
@@ -417,12 +658,16 @@ class Recorder:
         self.errors = 0
         self.last_error = ""
         self.started_at = 0.0
+        self.stats = {}
         self._recording = False
         self._pool = None
         self._in_flight = 0
         self._lock = threading.Lock()
-        self._written = set()
         self._alpha = None
+        self._video = []
+        self._depth = []
+        self._poses = []
+        self._start_mark = (None, 0.0)
         self._restore = {}
         self._stopped_playing_at = None
         self._action = None
@@ -442,23 +687,28 @@ class Recorder:
         """録画中のテイクのスレート (例 S01C03T02)。来歴なしで始めたときは空"""
         return (self._info.get("slate") or {}).get("label") or "" if self._recording else ""
 
+    def _shown_mark(self):
+        """(今表示している実写の撮影時刻 (秒) か None, 今の monotonic)"""
+        shown = self.ndi_in.shown_timecode if self.ndi_in.running else None
+        return (shown / 10_000_000 if shown else None), time.monotonic()
+
     def start(self, context, folder, shot=None):
         """shot は take.json に足す撮影の来歴 (shot_info)。"""
         scene = context.scene
-        settings = scene.artrk
+        settings = scene.trkar
         camera = _camera_of(scene)
         if camera is None:
             raise RuntimeError("録画するカメラがありません")
         name = time.strftime("take_%Y%m%d_%H%M%S")
         path = os.path.join(folder, name)
-        os.makedirs(os.path.join(path, "video"), exist_ok=True)
-        os.makedirs(os.path.join(path, "depth"), exist_ok=True)
-        os.makedirs(os.path.join(path, "alpha"), exist_ok=True)
+        for sub in ("video", "depth", "alpha", os.path.join(STAGING, "video"), os.path.join(STAGING, "alpha"),
+                    os.path.join(STAGING, "depth")):
+            os.makedirs(os.path.join(path, sub), exist_ok=True)
 
         # テイクごとに新しいアクションへ記録する (前のテイクや手で打ったキーは残る)
-        action = bpy.data.actions.new("ARtrk " + name)
+        action = bpy.data.actions.new("trkAR " + name)
         action.use_fake_user = True
-        lens_action = bpy.data.actions.new("ARtrk " + name + " Lens")
+        lens_action = bpy.data.actions.new("trkAR " + name + " Lens")
         lens_action.use_fake_user = True
         self._restore = {
             "camera": camera.name,
@@ -475,10 +725,11 @@ class Recorder:
         self.last_frame = self.start_frame - 1
         self.frames = self.dropped = self.errors = 0
         self.last_error = ""
-        self._written = set()
+        self.stats = {}
         self._alpha = None
+        self._video, self._depth, self._poses = [], [], []
         self._in_flight = 0
-        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ARtrkTake")
+        self._pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="TrkARTake")
         self._info = {
             "name": name,
             "fps": scene.render.fps / scene.render.fps_base,
@@ -489,19 +740,21 @@ class Recorder:
         }
         self._info.update(shot or {})
 
-        settings.record = True
+        # キーはタイムラインの進みでは打たない (止めたあとに撮影時刻で組み立てる)
+        settings.record = False
         scene.frame_end = self.start_frame + int(self._info["fps"] * 60 * MAX_MINUTES)
-        # 実時間に合わせる (重いときはフレームを飛ばす。飛んだフレームは後で埋める)
+        # 実時間に合わせる (重いときはフレームを飛ばす。テイクのフレームは撮影時刻で決めるので欠けない)
         scene.sync_mode = "FRAME_DROP"
         scene.frame_set(self.start_frame)
-        self.ndi_in.keep_rgba = True
         self._recording = True
         self.started_at = time.monotonic()
+        self._start_mark = self._shown_mark()
         self._stopped_playing_at = None
-        bpy.app.handlers.frame_change_post.append(self._on_frame)
+        self.ndi_in.frame_sink = self._on_video
+        self.depth_in.frame_sink = self._on_depth
+        tracking.sink = self._poses.append
         if not bpy.app.timers.is_registered(self._watch):
             bpy.app.timers.register(self._watch, first_interval=0.5)
-        self._capture(scene)
         if not context.screen.is_animation_playing:
             bpy.ops.screen.animation_play()
         return path
@@ -522,43 +775,56 @@ class Recorder:
             return None
         return 0.2
 
-    def _on_frame(self, scene, _depsgraph=None):
-        if self._recording:
-            self._capture(scene)
-
-    def _capture(self, scene):
-        frame = scene.frame_current
-        if frame < self.start_frame or frame in self._written:
-            return
+    def _enqueue(self, entries, timecode, write, *args):
+        """受信スレッドから。届いた 1 件を entries に足して .incoming/ への書き込みを頼む。
+        書き込み待ちがたまりすぎていたら捨てる。止めたあと (_recording が False) は何もしない"""
         with self._lock:
+            if not self._recording or self._pool is None:
+                return None
             if self._in_flight >= MAX_IN_FLIGHT:
                 self.dropped += 1
-                return
+                return None
+            capture = timecode / 10_000_000 if timecode and timecode > 0 else None
+            entry = Entry(capture, time.monotonic(), _frame_name(len(entries) + 1))
+            entries.append(entry)
             self._in_flight += 1
-        self._written.add(frame)
-        self.last_frame = max(self.last_frame, frame)
-        rgba = self.ndi_in.shown_rgba if self.ndi_in.running else None
-        if rgba is not None and self._alpha is None:
-            # 最初のフレームで決める (途中で RVM を付け外ししても拡張子は変えない)
-            self._alpha = bool(self.ndi_in.has_alpha)
-        state = self.depth_in.shown_state if self.depth_in.running else None
-        self._pool.submit(self._write, frame, rgba, self._alpha, state)
-        self.frames += 1
+            self._pool.submit(write, entry, *args)
+            return entry
 
-    def _write(self, frame, rgba, alpha, state):
+    def _on_video(self, timecode, rgba, alpha):
+        """NDI の受信スレッドから。届いた実写を全部書く"""
+        if self._alpha is None:
+            # 最初のフレームで決める (途中で RVM を付け外ししても拡張子は変えない)
+            self._alpha = bool(alpha)
+        if self._enqueue(self._video, timecode, self._write_video, rgba, self._alpha) is not None:
+            self.frames = len(self._video)
+
+    def _on_depth(self, timecode, state):
+        """深度の受信スレッドから。処理した深度を全部書く"""
+        self._enqueue(self._depth, timecode, self._write_depth, state)
+
+    def _write_video(self, entry, rgba, alpha):
         try:
-            name = _frame_name(frame)
-            if rgba is not None:
-                # アルファ付きの PNG は 1080p で 1 枚 4〜5MB になるので、色は JPEG、アルファは白黒の PNG に分ける
-                write_image(os.path.join(self.path, "video", name + ".jpg"), rgba[..., :3])
-                if alpha:
-                    write_image(os.path.join(self.path, "alpha", name + ".png"), rgba[..., 3])
-            if state is not None:
-                key, co, face_valid, mask_pixels, meta = state
-                # マスクは RGB が同じ値 (A = 1) なので 1 チャンネル 8bit で持つ
-                mask = (mask_pixels[..., 0] * 255.0 + 0.5).astype(np.uint8)
-                np.savez_compressed(os.path.join(self.path, "depth", name + ".npz"), key=np.array(key), co=co,
-                                    face_valid=face_valid.astype(np.uint8), mask=mask, meta=json.dumps(meta))
+            # アルファ付きの PNG は 1080p で 1 枚 4〜5MB になるので、色は JPEG、アルファは白黒の PNG に分ける
+            write_image(os.path.join(self.path, STAGING, "video", entry.name + ".jpg"), rgba[..., :3])
+            if alpha:
+                write_image(os.path.join(self.path, STAGING, "alpha", entry.name + ".png"), rgba[..., 3])
+            entry.ok = True
+        except Exception as exc:
+            self.errors += 1
+            self.last_error = str(exc)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+    def _write_depth(self, entry, state):
+        try:
+            key, co, face_valid, mask_pixels, meta = state
+            # マスクは RGB が同じ値 (A = 1) なので 1 チャンネル 8bit で持つ
+            mask = (mask_pixels[..., 0] * 255.0 + 0.5).astype(np.uint8)
+            np.savez_compressed(os.path.join(self.path, STAGING, "depth", entry.name + ".npz"), key=np.array(key),
+                                co=co, face_valid=face_valid.astype(np.uint8), mask=mask, meta=json.dumps(meta))
+            entry.ok = True
         except Exception as exc:
             self.errors += 1
             self.last_error = str(exc)
@@ -569,30 +835,42 @@ class Recorder:
     def stop(self, context):
         if not self._recording:
             return None
-        self._recording = False
-        if self._on_frame in bpy.app.handlers.frame_change_post:
-            bpy.app.handlers.frame_change_post.remove(self._on_frame)
+        stop_mark = self._shown_mark()
+        with self._lock:
+            self._recording = False
+        self.ndi_in.frame_sink = None
+        self.depth_in.frame_sink = None
+        tracking.sink = None
         if context.screen is not None and context.screen.is_animation_playing:
             bpy.ops.screen.animation_cancel(restore_frame=False)
-        self.ndi_in.keep_rgba = False
         self._pool.shutdown(wait=True)
         self._pool = None
 
         scene = context.scene
         restore = self._restore
-        settings = scene.artrk
+        settings = scene.trkar
         settings.record = restore["record"]
         scene.sync_mode = restore["sync_mode"]
-        end = max(self.last_frame, self.start_frame)
+        fps = self._info["fps"]
+        frames, video, depth, self.stats = plan_take(
+            fps, self._poses, self._video, self._depth, self._start_mark, stop_mark,
+            pose_offset=settings.pose_sync_offset / 1000.0 if settings.pose_sync else 0.0,
+            depth_offset=settings.depth_sync_offset / 1000.0 if settings.depth_sync else 0.0,
+            smoothing=settings.smoothing)
+        end = self.start_frame + len(frames) - 1
+        self.last_frame = end
+        self.frames = len(frames)
         scene.frame_end = end
-        self._fill_gaps(end)
-        # ライブに戻る: カメラには録画前のアクションを戻す (テイクは「再生」で割り当てる)
+        self._link_frames(frames, video, depth)
         camera = bpy.data.objects.get(restore["camera"])
         if camera is not None:
+            bake_keys(camera, self._action, self._lens_action, self.start_frame, frames)
+            # ライブに戻る: カメラには録画前のアクションを戻す (テイクは「再生」で割り当てる)
             _assign(camera, restore["action"])
             _assign(camera.data, restore["lens_action"])
-        info = dict(self._info, frame_end=end, alpha=bool(self._alpha),
-                    video=self._alpha is not None, frames=self.frames, dropped=self.dropped)
+        has_video = bool(video)
+        info = dict(self._info, frame_end=end, alpha=bool(self._alpha) and has_video, video=has_video,
+                    frames=self.frames, dropped=self.dropped, sync=self.stats)
         with open(os.path.join(self.path, "take.json"), "w", encoding="utf-8") as f:
             json.dump(info, f, ensure_ascii=False, indent=2)
         # カメラの動き自体もテイクフォルダへ焼く。.blend を保存し忘れたり、別の .blend で
@@ -600,26 +878,29 @@ class Recorder:
         _save_actions(self.path, self._action, self._lens_action)
         return self.path
 
-    def _fill_gaps(self, end):
-        """飛んだフレームを前のフレームで埋める (再生・書き出しで欠けないように)。"""
-        for sub in ("video", "alpha", "depth"):
-            folder = os.path.join(self.path, sub)
-            files = {os.path.splitext(n)[0]: n for n in os.listdir(folder)}
-            if not files:
+    def _link_frames(self, frames, video, depth):
+        """選んだ実写・深度を video/000001.jpg … の名前に付け替え、.incoming/ を片付ける
+        (同じ 1 枚を続けて使うフレームはハードリンク、できなければコピー)"""
+        staging = os.path.join(self.path, STAGING)
+        streams = (("video", ".jpg", video, 0), ("depth", ".npz", depth, 1))
+        if self._alpha:
+            streams += (("alpha", ".png", video, 0),)
+        for sub, ext, entries, column in streams:
+            if not entries:
                 continue
-            ext = os.path.splitext(next(iter(files.values())))[1]
-            # 頭の欠け (REC 直後はまだ表示中のフレームを持っていない) は最初のフレームで埋める
-            previous = files[min(files)]
-            for frame in range(self.start_frame, end + 1):
-                name = _frame_name(frame)
-                if name in files:
-                    previous = files[name]
-                elif previous is not None:
-                    target = os.path.join(folder, name + ext)
-                    try:
-                        os.link(os.path.join(folder, previous), target)
-                    except OSError:
-                        shutil.copyfile(os.path.join(folder, previous), target)
+            for i, frame in enumerate(frames):
+                index = frame[column]
+                if index is None:
+                    continue
+                source = os.path.join(staging, sub, entries[index].name + ext)
+                target = os.path.join(self.path, sub, _frame_name(self.start_frame + i) + ext)
+                if not os.path.exists(source):
+                    continue
+                try:
+                    os.link(source, target)
+                except OSError:
+                    shutil.copyfile(source, target)
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 class Player:
@@ -680,7 +961,7 @@ class Player:
             camera.rotation_mode = "XYZ"
         # 置き場はテイクごと (take.json の placement)。無ければ録ったときの位置で再生する
         self.pivot, self.front_distance, previous = place_take(scene, camera, action, info,
-                                                               scene.artrk.ndi_in_front_distance)
+                                                               scene.trkar.ndi_in_front_distance)
         # 同じテイクを再生し直したとき (置き場を作った・書き出した) は前の置き場を覚え直さない
         if previous is not None:
             self.previous_anchor = previous

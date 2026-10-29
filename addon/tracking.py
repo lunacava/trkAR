@@ -23,15 +23,18 @@ AXIS_CONVERSION = Matrix.Rotation(math.radians(90.0), 4, "X")
 
 server = OSCServer()
 _state = {"serial": 0, "location": None, "rotation": None, "raw": None, "anchor": None, "rig": None,
-          "controls": None, "latest": None, "key": None}
+          "controls": None, "latest": None, "key": None, "sunk": None}
 # True を返す間はカメラへ書き込まない (テイクの再生・書き出し中。アクションとぶつかって震えるため)
 hold = None
 # iPhone の REC ボタンの指示 (client_id, 開始か) を受けたときにメインスレッドから呼ぶ
 rec_hook = None
 # 実写の NDIInput (__init__ が入れる)。表示中の timecode を見て同じ時刻の姿勢を選ぶ
 video = None
+# テイクの録画中 (take.Recorder) に、届いた姿勢を 1 件ずつ Blender のカメラの姿勢にして渡す先。
+# callable(PoseSample)。録画はタイムラインの進みでキーを打たず、止めたあとに映像の撮影時刻で組み立てる
+sink = None
 # 姿勢と映像の時刻がこれ以上離れていたら時計が違う (古い trkAR、iPhone 以外のソースなど) とみなして揃えない (秒)。
-# 履歴 (osc.HISTORY、約 4 秒) より長くして、それより短い遅れは TOO_LATE として区別する
+# 履歴 (osc.HISTORY、8 秒以上) より長くして、それより短い遅れは TOO_LATE として区別する
 SYNC_LIMIT = 10.0
 # 映像の遅れを測る件数 (30fps で 3 秒分)
 LAG_SAMPLES = 90
@@ -39,6 +42,22 @@ LAG_SAMPLES = 90
 #        "NO_TIME" (時刻が無い・合わない) / "TOO_LATE" (映像の遅れが履歴より大きい)
 # lag: 映像が姿勢よりどれだけ遅れて届いているか (ms)。新しい映像が出るたびに 1 件
 sync = {"state": None, "lag": collections.deque(maxlen=LAG_SAMPLES), "timecode": None}
+
+
+class PoseSample:
+    """録画用の姿勢 1 件。frame_time は ARFrame.timestamp (秒、映像の timecode と同じ時計) か None、
+    received_at は PC に届いた時刻 (time.monotonic)。location / rotation はワールド座標で、
+    基準・オフセット・Blender 側のずれまで足したもの (ライブでカメラに書くのと同じ。スムージングは除く)。
+    lens は (レンズ mm, 被写界深度を使うか, F 値, フォーカス距離, レンズにキーを打つか, 被写界深度にキーを打つか)"""
+
+    __slots__ = ("frame_time", "received_at", "location", "rotation", "lens")
+
+    def __init__(self, frame_time, received_at, location, rotation, lens):
+        self.frame_time = frame_time
+        self.received_at = received_at
+        self.location = location
+        self.rotation = rotation
+        self.lens = lens
 
 
 class Anchor:
@@ -239,6 +258,23 @@ def _sample(settings, latest, shown, rig):
     return loc0.lerp(loc1, t), rot0.slerp(rot1, t), p0.hfov_deg + (p1.hfov_deg - p0.hfov_deg) * t
 
 
+def _place(settings, location, rotation, floor_set=False):
+    """iPhone の姿勢 (Blender のワールド座標) を基準・オフセットで置いた姿勢。相対で基準が無ければ None。
+
+    floor_set は iPhone で床が決まっているか (/client/current の floorHeight が 0 でない)。決まっていれば
+    iPhone の高さは床からの高さなので、相対でも「高さは iPhone の床から」なら高さだけは床の高さ + その値にする
+    (水平の位置と向きは Blender のカメラから動いた分)。実写の床と Blender の床が合う"""
+    if settings.mode == "RELATIVE":
+        anchor = _state["anchor"]
+        if anchor is None or anchor.ref_loc is None:
+            return None
+        placed, turned = anchor.apply(settings.scale, location, rotation)
+        if floor_set and settings.floor_from_iphone:
+            placed.z = settings.floor_z + location.z * settings.scale
+        return placed, turned
+    return apply_offsets(settings, location, rotation)
+
+
 def _update_target(settings, camera, latest, shown):
     rig = server.rig_for(latest.client_id) if settings.use_rig else None
     if rig is not None and rig.camera_id != latest.camera_id:
@@ -250,13 +286,37 @@ def _update_target(settings, camera, latest, shown):
         anchor = _state["anchor"]
         if anchor is None and camera is not None:
             anchor = _state["anchor"] = Anchor(camera)
-        if anchor is not None:
-            if anchor.ref_loc is None:
-                anchor.set_reference(location, rotation)
-            _state["target"] = anchor.apply(settings.scale, location, rotation)
-    else:
-        _state["target"] = apply_offsets(settings, location, rotation)
+        if anchor is not None and anchor.ref_loc is None:
+            anchor.set_reference(location, rotation)
+    target = _place(settings, location, rotation, bool(latest.floor_height))
+    if target is not None:
+        _state["target"] = target
     _state["hfov"] = hfov
+
+
+def _feed_sink(settings, camera, latest):
+    """前回から届いた姿勢を全部、録画の sink へ渡す (ライブでカメラに書くのと同じ変換、スムージングなし)。
+    レンズ・被写界深度はこの tick でカメラに当てた値を使う (姿勢より変化がずっと遅いので)。"""
+    rig = _state.get("rig")
+    lens = None
+    if camera.type == "CAMERA":
+        cam = camera.data
+        lens_rig = rig if settings.use_rig_lens else None
+        lens = (cam.lens, cam.dof.use_dof, cam.dof.aperture_fstop, cam.dof.focus_distance,
+                bool(settings.sync_fov or lens_rig is not None or settings.ctl_lens > 0.0), lens_rig is not None)
+    poses = server.history(latest.client_id) if latest.frame_time is not None else [latest]
+    last = _state["sunk"]
+    for pose in poses:
+        stamp = pose.frame_time if pose.frame_time is not None else pose.received_at
+        if last is not None and stamp <= last:
+            continue
+        location, rotation = arkit_to_blender(pose, rig)
+        placed = _place(settings, location, rotation, bool(pose.floor_height))
+        if placed is None:
+            continue
+        location, rotation = apply_controls(settings, *placed)
+        sink(PoseSample(pose.frame_time, pose.received_at, location, rotation, lens))
+        _state["sunk"] = stamp
 
 
 def tick():
@@ -266,7 +326,7 @@ def tick():
     scene = bpy.context.scene
     if scene is None:
         return 1.0 / 60.0
-    settings = scene.artrk
+    settings = scene.trkar
     camera = settings.camera or scene.camera
     for client_id, start in server.take_rec_commands():
         # 受信側の設定で受け付けない / 別の iPhone (Client ID 指定あり) の指示は無視する
@@ -325,6 +385,11 @@ def tick():
         if camera.type == "CAMERA":
             _apply_lens(settings, camera.data, rig, _state.get("hfov", 0.0))
 
+        if sink is not None and latest is not None:
+            _feed_sink(settings, camera, latest)
+        else:
+            _state["sunk"] = None
+
         if settings.record and bpy.context.screen is not None and bpy.context.screen.is_animation_playing:
             frame = scene.frame_current
             camera.keyframe_insert("location", frame=frame)
@@ -382,6 +447,7 @@ def start(port, camera=None):
     _state["serial"] = 0
     _state["latest"] = None
     _state["key"] = None
+    _state["sunk"] = None
     sync["state"] = None
     sync["timecode"] = None
     sync["lag"].clear()

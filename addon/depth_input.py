@@ -1,11 +1,11 @@
-"""ARtrk の LiDAR 深度 (NDI "ARtrk-Depth") を受けて、カメラの前に立体スクリーンを作る。
+"""trkAR の LiDAR 深度 (NDI "trkAR-Depth") を受けて、カメラの前に立体スクリーンを作る。
 
 受け方は 2 通り:
-    UDP (既定): ARtrk が SystemPC IP の 9100 番へ無圧縮で送る "ARD1" パケット
+    UDP (既定): trkAR が SystemPC IP の 9100 番へ無圧縮で送る "ARD1" パケット
         (UDPDepthSender.swift)。NDI の圧縮による誤差が乗らないのでこちらが綺麗。
     NDI: FourCC PA16。Y プレーン = 深度 (UInt16 × scale = メートル、0 = 無効)、
     Alpha プレーン = 信頼度 (0 / 32768 / 65535)。
-    メタデータ <ARtrkDepth w h fx fy cx cy scale m00..m33/> の fx..cy は深度解像度基準。
+    メタデータ <trkARDepth w h fx fy cx cy scale m00..m33/> の fx..cy は深度解像度基準。
 
 深度画像は 4:3 の全体、カラーの NDI は横幅そのままで上下を切った 16:9 なので、
 カラーと重なる中央 3/4 の行だけを使う。各画素を
@@ -13,9 +13,9 @@
 でカメラ座標 (−Z 前方 / Y 上。Blender のカメラと同じ) に逆投影した格子メッシュを
 追従カメラの子にすると、カメラから見て実写とぴったり重なる。
 信頼度の低い画素・遠すぎる画素・前後の段差の境目は、画素単位のマスク画像
-`ARtrk Depth Mask` で透明にする。マスクはぼかしてから線形補間で読み、しきい値
+`trkAR Depth Mask` で透明にする。マスクはぼかしてから線形補間で読み、しきい値
 (エッジ位置) とぼかし幅をマテリアルで決めるので、格子の粗さに関係なく輪郭が滑らかになる。
-面属性 `artrk_valid` (面の 4 隅が有効か) も書いておくが、マテリアルでは使っていない。
+面属性 `trkar_valid` (面の 4 隅が有効か) も書いておくが、マテリアルでは使っていない。
 """
 
 import collections
@@ -31,20 +31,20 @@ import numpy as np
 
 from . import ndi, ndi_input
 
-OBJECT_NAME = "ARtrk Depth Screen"
+OBJECT_NAME = "trkAR Depth Screen"
 # 人の後ろに置く実写の板 (深度スクリーンの子)。人の居ない所はこれが見える
-BACKGROUND_NAME = "ARtrk Depth Background"
-MASK_IMAGE_NAME = "ARtrk Depth Mask"
-MASK_NODE = "ARtrk Mask"
-EDGE_NODE = "ARtrk Edge"
-ALPHA_NODE = "ARtrk Video Alpha"
+BACKGROUND_NAME = "trkAR Depth Background"
+MASK_IMAGE_NAME = "trkAR Depth Mask"
+MASK_NODE = "trkAR Mask"
+EDGE_NODE = "trkAR Edge"
+ALPHA_NODE = "trkAR Video Alpha"
 # 映像のアルファ (RVM) で切るとき、ARKit の人物マスクより外側まで人の深度を広げる画素数
 # (RVM の輪郭や髪は ARKit のマスクより外へ出るので、そこを背景の深度にしない)
 MATTE_GROW = 3
 # マスクのぼかし回数 ([1 2 1] を縦横に)。エッジを動かせる幅もこれで決まる (±3 画素ほど)
 MASK_BLUR_PASSES = 3
-VALID_ATTRIBUTE = "artrk_valid"
-# ARtrk のカラーは 16:9 (縦位置なら 9:16)。4:3 のセンサー画像から中央を切り出している
+VALID_ATTRIBUTE = "trkar_valid"
+# trkAR のカラーは 16:9 (縦位置なら 9:16)。4:3 のセンサー画像から中央を切り出している
 VIDEO_ASPECT = 16.0 / 9.0
 
 UDP_DEFAULT_PORT = 9100
@@ -58,14 +58,15 @@ UDP_HEADER = struct.Struct("<4sIHHHHHH4fI")
 UDP_TIMECODE = struct.Struct("<q")
 # 映像と揃えるために取っておく処理済みの深度 (30fps で 1 秒分)
 SYNC_QUEUE = 30
-# 深度と映像の時刻がこれ以上離れていたら時計が違う (古い ARtrk など) とみなして揃えない (100ns)
+# 深度と映像の時刻がこれ以上離れていたら時計が違う (古い trkAR など) とみなして揃えない (100ns)
 SYNC_LIMIT = 20_000_000
 
 _ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 
 def parse_metadata(text):
-    if not text or "ARtrkDepth" not in text:
+    # trkAR 1.1.1 までは <ARtrkDepth …/> (名前を変える前)
+    if not text or ("trkARDepth" not in text and "ARtrkDepth" not in text):
         return None
     values = {}
     for key, value in _ATTR.findall(text):
@@ -144,7 +145,7 @@ def build_mesh(mesh, grid):
     if VALID_ATTRIBUTE in mesh.attributes:
         mesh.attributes.remove(mesh.attributes[VALID_ATTRIBUTE])
     mesh.attributes.new(VALID_ATTRIBUTE, "FLOAT", "FACE")
-    mesh["artrk_grid"] = list(grid.key)
+    mesh["trkar_grid"] = list(grid.key)
 
 
 def ensure_background(screen):
@@ -247,7 +248,7 @@ def build_material(material):
     edge.interpolation_type = "SMOOTHSTEP"
     edge.clamp = True
     edge.location = (-400, 250)
-    # 実写にアルファがあれば (RVM で切り抜いた "ARtrk Matte" など) それも掛ける。不透明な映像なら 1
+    # 実写にアルファがあれば (RVM で切り抜いた "trkAR Matte" など) それも掛ける。不透明な映像なら 1
     alpha = nodes.new("ShaderNodeMath")
     alpha.name = ALPHA_NODE
     alpha.operation = "MULTIPLY"
@@ -377,8 +378,11 @@ class DepthInput:
         self.sync_offset = 0.0
         # 表示中の深度が映像よりどれだけ古いか (ms)。揃えていないときは None
         self.sync_lag = None
-        # 最後にスクリーンへ出した形 (grid.key, 頂点, 面, マスク, meta)。録画 (take.Recorder) が書き出す
+        # 最後にスクリーンへ出した形 (grid.key, 頂点, 面, マスク, meta)
         self.shown_state = None
+        # 録画中 (take.Recorder) は処理した深度を全部ここへ渡す。
+        # 受信スレッドから callable(timecode (100ns) か None, (grid.key, 頂点, 面, マスク, meta)) で呼ぶ
+        self.frame_sink = None
         self._grids = {}
 
     @property
@@ -393,7 +397,7 @@ class DepthInput:
         self._begin(self._recv_loop)
 
     def start_udp(self, port=UDP_DEFAULT_PORT):
-        """ARtrk の無圧縮 UDP 深度 ("ARD1") を受ける。"""
+        """trkAR の無圧縮 UDP 深度 ("ARD1") を受ける。"""
         self.stop()
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -423,7 +427,7 @@ class DepthInput:
         self.person_only = False
         self._released = False
         self._running = True
-        self._thread = threading.Thread(target=loop, name="ARtrkDepthIn", daemon=True)
+        self._thread = threading.Thread(target=loop, name="trkARDepthIn", daemon=True)
         self._thread.start()
         bpy.app.timers.register(self._tick, persistent=True)
 
@@ -491,7 +495,7 @@ class DepthInput:
         obj = bpy.data.objects.get(OBJECT_NAME)
         if obj is None or obj.type != "MESH" or obj.mode == "EDIT" or not len(obj.data.vertices):
             return False
-        distance = (self.person_depth or scene.artrk.depth_person_distance) * scene.artrk.scale
+        distance = (self.person_depth or scene.trkar.depth_person_distance) * scene.trkar.scale
         mesh = obj.data
         co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
         mesh.vertices.foreach_get("co", co)
@@ -521,7 +525,7 @@ class DepthInput:
             return
         meta = parse_metadata(frame.p_metadata.decode("utf-8", "replace") if frame.p_metadata else "")
         if meta is None:
-            self.last_error = "ARtrkDepth メタデータがありません"
+            self.last_error = "trkARDepth メタデータがありません"
             return
         width, height, stride = frame.xres, frame.yres, frame.line_stride_in_bytes
         plane = stride * height
@@ -571,7 +575,7 @@ class DepthInput:
             entry = frames.get(frame_id)
             if entry is None:
                 # 使い終わったフレームに遅れて来たパケットは無視する
-                # (大きく戻ったときは ARtrk 側で送り直しが始まったとみなして受ける)
+                # (大きく戻ったときは trkAR 側で送り直しが始まったとみなして受ける)
                 if latest >= 0 and (latest - frame_id) % (1 << 32) < 60:
                     continue
                 # 次のフレームが来たのに揃っていないフレームは、ほぼ揃っていれば
@@ -766,6 +770,9 @@ class DepthInput:
         with self._lock:
             self._queue.append((timecode, (grid, co, face_valid, mask_pixels, meta)))
         self.frames_received += 1
+        sink = self.frame_sink
+        if sink is not None:
+            sink(timecode, (grid.key, co, face_valid, mask_pixels, meta))
 
     # --- メインスレッド ---
 
@@ -774,7 +781,7 @@ class DepthInput:
             return None
         scene = bpy.context.scene
         if scene is not None:
-            settings = scene.artrk
+            settings = scene.trkar
             self.step = int(settings.depth_step)
             self.max_distance = settings.depth_max_distance
             self.min_confidence = int(settings.depth_confidence)
@@ -841,10 +848,10 @@ class DepthInput:
         if obj is None or obj.type != "MESH" or obj.mode == "EDIT":
             return
         mesh = obj.data
-        if list(mesh.get("artrk_grid", [])) != list(grid.key) or len(mesh.vertices) * 3 != len(co):
+        if list(mesh.get("trkar_grid", mesh.get("artrk_grid", []))) != list(grid.key) or len(mesh.vertices) * 3 != len(co):
             build_mesh(mesh, grid)
         if not self.frames_shown:
-            update_edge(scene.artrk)
+            update_edge(scene.trkar)
         height, width = mask_pixels.shape[:2]
         mask = ensure_mask_image(width, height)
         if tuple(mask.size) != (width, height):
@@ -852,7 +859,7 @@ class DepthInput:
         mask.pixels.foreach_set(mask_pixels.ravel())
         mask.update()
         # 実寸 (m) をトラッキングのスケールに合わせる (カメラの移動量と同じ倍率)
-        mesh.vertices.foreach_set("co", co * scene.artrk.scale)
+        mesh.vertices.foreach_set("co", co * scene.trkar.scale)
         mesh.attributes[VALID_ATTRIBUTE].data.foreach_set("value", face_valid)
         mesh.update()
         self.resolution = (grid.width, grid.height)
@@ -860,7 +867,7 @@ class DepthInput:
         self.frames_shown += 1
         self.shown_state = (grid.key, co, face_valid, mask_pixels, meta)
 
-        settings = scene.artrk
+        settings = scene.trkar
         background = bpy.data.objects.get(BACKGROUND_NAME)
         if settings.depth_background:
             background = ensure_background(obj)

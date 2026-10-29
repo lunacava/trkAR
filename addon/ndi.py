@@ -7,6 +7,7 @@ NDI は再配布ライセンスの都合でアドオンに同梱しない。NDI 
 import ctypes
 import os
 import sys
+import time
 
 
 def _fourcc(code):
@@ -41,6 +42,32 @@ FOURCC_PA16 = _fourcc("PA16")
 FOURCC_P216 = _fourcc("P216")
 RECV_BANDWIDTH_LOWEST = 0
 RECV_BANDWIDTH_HIGHEST = 100
+
+
+class Rate:
+    """数えたフレームから実際の fps を出す (1 秒ごとに更新)。tick は送受信のスレッドから呼んでよい。"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self._fps = 0.0
+        self._count = 0
+        self._since = time.perf_counter()
+
+    def tick(self):
+        self._count += 1
+        now = time.perf_counter()
+        if now - self._since >= 1.0:
+            self._fps = self._count / (now - self._since)
+            self._count = 0
+            self._since = now
+
+    @property
+    def fps(self):
+        # 止まったときに古い値を出し続けないよう、2 秒来なければ来た分だけで割る
+        elapsed = time.perf_counter() - self._since
+        return self._count / elapsed if elapsed > 2.0 else self._fps
 
 
 class SendCreate(ctypes.Structure):
@@ -237,7 +264,7 @@ class Finder:
             raise RuntimeError("NDIlib_find_create_v2() に失敗しました")
 
     def sources(self):
-        """見つかっているソース名の一覧 (例: "IPHONE (ARtrk)")。"""
+        """見つかっているソース名の一覧 (例: "IPHONE (trkAR)")。"""
         if not self._instance:
             return []
         count = ctypes.c_uint32(0)
@@ -264,7 +291,7 @@ class Receiver:
             color_format = DEFAULT_RECV_COLOR_FORMAT
         self._lib = load(library_override)
         self._source_name = source_name.encode("utf-8")
-        self._recv_name = b"ARtrk Camera (Blender)"
+        self._recv_name = b"trkAR Camera (Blender)"
         settings = RecvCreateV3(
             Source(self._source_name, None),
             color_format,

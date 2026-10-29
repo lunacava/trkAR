@@ -14,7 +14,7 @@ import numpy as np
 
 from . import ndi
 
-IMAGE_NAME = "ARtrk NDI"
+IMAGE_NAME = "trkAR NDI"
 
 
 def ensure_image(width=16, height=9):
@@ -49,6 +49,9 @@ class NDIInput:
         self.source_name = ""
         self.frames_received = 0
         self.frames_shown = 0
+        # 実際の fps (受信 / 画像への表示)
+        self.recv_rate = ndi.Rate()
+        self.show_rate = ndi.Rate()
         self.resolution = (0, 0)
         self.last_error = ""
         self._finder = None
@@ -58,11 +61,11 @@ class NDIInput:
         self._pending = None
         # 表示中のフレームの timecode (100ns)。深度スクリーンが同じ時刻の深度を選ぶのに使う
         self.shown_timecode = None
-        # 受けている映像にアルファがあるか (artrk_matte.py の "ARtrk Matte" など)
+        # 受けている映像にアルファがあるか (trkar_matte.py の "trkAR Matte" など)
         self.has_alpha = False
-        # 録画中 (take.Recorder) は表示中のフレームを 8bit のまま (左上原点) 持っておく
-        self.keep_rgba = False
-        self.shown_rgba = None
+        # 録画中 (take.Recorder) は届いたフレームを全部、8bit のまま (左上原点) ここへ渡す。
+        # 受信スレッドから callable(timecode (100ns), rgba (h, w, 4) uint8, アルファがあるか) で呼ぶ
+        self.frame_sink = None
         # depth_input が ARKit の人物マスクを直接アルファとして使うためのフック。
         # callable(width, height) -> (height, width) の 0..1 float32 (Blender と同じ左下原点) か None
         self.alpha_override = None
@@ -86,14 +89,16 @@ class NDIInput:
         self.source_name = source_name
         self.frames_received = 0
         self.frames_shown = 0
+        self.recv_rate.reset()
+        self.show_rate.reset()
         self.resolution = (0, 0)
         self.last_error = ""
         self._pending = None
         self.shown_timecode = None
-        # 受けている映像にアルファがあるか (artrk_matte.py の "ARtrk Matte" など)
+        # 受けている映像にアルファがあるか (trkar_matte.py の "trkAR Matte" など)
         self.has_alpha = False
         self._running = True
-        self._thread = threading.Thread(target=self._recv_loop, name="ARtrkNDIIn", daemon=True)
+        self._thread = threading.Thread(target=self._recv_loop, name="TrkARNDIIn", daemon=True)
         self._thread.start()
         ensure_image()
         bpy.app.timers.register(self._tick, persistent=True)
@@ -125,11 +130,14 @@ class NDIInput:
         # NDI は左上原点、Blender の画像は左下原点。ここで反転と 0..1 化まで済ませておく
         floats = np.empty((height, width, 4), dtype=np.float32)
         np.multiply(pixels[::-1], 1.0 / 255.0, out=floats, casting="unsafe")
-        rgba = pixels.copy() if self.keep_rgba else None
         with self._lock:
-            self._pending = (floats, frame.timecode, rgba)
+            self._pending = (floats, frame.timecode)
         self.has_alpha = frame.FourCC in (ndi.FOURCC_RGBA, ndi.FOURCC_BGRA)
         self.frames_received += 1
+        self.recv_rate.tick()
+        sink = self.frame_sink
+        if sink is not None:
+            sink(frame.timecode, pixels.copy(), self.has_alpha)
 
     def _recv_loop(self):
         while self._running:
@@ -147,11 +155,10 @@ class NDIInput:
         with self._lock:
             pending, self._pending = self._pending, None
         if pending is not None:
-            floats, timecode, rgba = pending
+            floats, timecode = pending
             try:
                 self._upload(floats)
                 self.shown_timecode = timecode
-                self.shown_rgba = rgba
             except Exception as exc:  # 画像が消された / 編集中など。次のフレームで作り直す
                 self.last_error = str(exc)
         return 1.0 / 60.0
@@ -176,6 +183,7 @@ class NDIInput:
         image.update()
         self.resolution = (width, height)
         self.frames_shown += 1
+        self.show_rate.tick()
         # マテリアル / カメラ背景を表示しているビューを描き直す
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:

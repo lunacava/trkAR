@@ -118,7 +118,7 @@ def start(handlers, port=DEFAULT_PORT):
     stop()
     server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     server.daemon_threads = True
-    thread = threading.Thread(target=server.serve_forever, name="artrk-bridge", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, name="trkar-bridge", daemon=True)
     thread.start()
     _state.update(server=server, thread=thread, handlers=dict(handlers), last="")
     if not bpy.app.timers.is_registered(_pump):

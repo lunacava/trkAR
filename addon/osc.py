@@ -1,4 +1,4 @@
-"""ARtrk の `/client/current` と `/client/rig` (と `/client/rec`・`/client/info`) を受ける最小限の OSC (UDP) 受信機。
+"""trkAR の `/client/current` と `/client/rig` (と `/client/rec`・`/client/info`) を受ける最小限の OSC (UDP) 受信機。
 
 外部ライブラリに依存しないよう、OSCKit が送る型 (i / f / s / d / h / T / F)
 だけを自前でデコードする。受信はワーカースレッドで行い、最新の 1 件と、
@@ -22,8 +22,9 @@ REC_REPEAT_WINDOW = 0.5
 # 端末とアプリの情報。[clientID, 機種の識別子, OS 名, OS の版, アプリの版, ビルド, 端末名]。
 # 送信開始時と 5 秒おきに届く
 INFO_ADDRESS = "/client/info"
-# 映像 (NDI) と同じ時刻の姿勢を選ぶために取っておく件数 (約 30Hz で 4 秒分)
-HISTORY = 120
+# 映像 (NDI) と同じ時刻の姿勢を選ぶ・録画で全部拾うために取っておく件数。
+# trkAR 1.1.1 からは毎フレーム (60Hz) 届くので 8 秒分 (1.1 までの 30Hz なら 16 秒分)
+HISTORY = 480
 
 # 機種の識別子 (utsname().machine) → 名前。確かなものだけ入れ、無いものは識別子をそのまま名前にする
 DEVICE_MODELS = {
@@ -195,7 +196,7 @@ def local_ipv4_addresses():
         stale = time.monotonic() - _ip_cache["at"] > 5.0
         if stale and not _ip_cache["busy"]:
             _ip_cache["busy"] = True
-            threading.Thread(target=_refresh_ips, name="ARtrkIPScan", daemon=True).start()
+            threading.Thread(target=_refresh_ips, name="TrkARIPScan", daemon=True).start()
         return list(_ip_cache["list"])
 
 
@@ -398,7 +399,7 @@ class OSCServer:
         self._rec_commands.clear()
         self._rec_last = {}
         self._running = True
-        self._thread = threading.Thread(target=self._loop, name="ARtrkOSC", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="TrkAROSC", daemon=True)
         self._thread.start()
 
     def stop(self):

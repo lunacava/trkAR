@@ -23,6 +23,10 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 ## ライセンス / License
 
+このリポジトリは部分ごとにライセンスが違います (全体で 1 つのライセンスではありません。一覧は [`LICENSE`](LICENSE))。iOS / iPadOS アプリ本体はオープンソースではなく、App Store の EULA (`terms.html`) で配布しています。
+
+Parts of this repository are under different licenses (no single license for the whole repo; summary in [`LICENSE`](LICENSE)). The iOS / iPadOS app itself is not open source; it is distributed under the App Store EULA (`terms.html`).
+
 **ざっくり言うと**: どれも商用を含めて自由に使えます。配り直すときに作者の表示 (© 2026 Hiroki Mori / trkAR) を残してください。
 アドオンだけは Blender の決まりで GPL なので、アドオンそのものを改変して配るときはソースも一緒に公開してください。
 

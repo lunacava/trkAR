@@ -1,0 +1,16 @@
+trkAR — licenses in this repository
+
+This repository contains parts under different licenses. There is no single
+license for the whole repository. See README.md ("ライセンス / License").
+
+  addon/        trkAR Camera (Blender add-on)    GPL-3.0-or-later   addon/LICENSE
+  examples/     hook examples                    Apache-2.0         examples/LICENSE, examples/NOTICE
+  docs & site   INTEGRATION.md, CLAUDE.md,       CC BY 4.0          https://creativecommons.org/licenses/by/4.0/
+                website text, sample scenes                         credit: "© 2026 Hiroki Mori / trkAR"
+  assets/OCRA.otf  OCR-A (Wales / Skala)                            assets/OCRA.otf.LICENSE.txt
+
+The trkAR iOS / iPadOS app itself is not open source. It is distributed through
+the App Store under Apple's Standard EULA together with the NDI® SDK terms
+(terms.html).
+
+NDI® is a registered trademark of Vizrt NDI AB.

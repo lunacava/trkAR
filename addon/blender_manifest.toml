@@ -4,7 +4,7 @@ id = "trkar_camera"
 version = "0.10.0"
 name = "trkAR Camera"
 tagline = "Drive a camera from trkAR (iPhone) and send its view over NDI"
-maintainer = "hiroki"
+maintainer = "lunacava"
 type = "add-on"
 
 blender_version_min = "4.2.0"

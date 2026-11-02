@@ -277,5 +277,5 @@ iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の 
 
 ---
 
-この文書は CC BY 4.0 (© 2026 Hiroki Mori / trkAR)、見本のコードは Apache-2.0 です。
+この文書は CC BY 4.0 (© 2026 lunacava / trkAR)、見本のコードは Apache-2.0 です。
 **使ってくれたら、ひとこと連絡をもらえるとうれしいです** (任意): [「使っています」の Issue](https://github.com/lunacava/trkAR/issues/new?template=used-by.md)

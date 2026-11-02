@@ -2,8 +2,8 @@
 
 AR camera tracking for virtual production — iPhone / iPad app and Blender add-on.
 
-> trkAR は Hiroki Mori の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。
-> trkAR is a personal project by Hiroki Mori. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.
+> trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。
+> trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.
 
 - Website: https://lunacava.github.io/trkAR/
 - Blender add-on (trkAR Camera): [Releases](https://github.com/lunacava/trkAR/releases) / source in [`addon/`](addon/)
@@ -27,17 +27,17 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 Parts of this repository are under different licenses (no single license for the whole repo; summary in [`LICENSE`](LICENSE)). The iOS / iPadOS app itself is not open source; it is distributed under the App Store EULA (`terms.html`).
 
-**ざっくり言うと**: どれも商用を含めて自由に使えます。配り直すときに作者の表示 (© 2026 Hiroki Mori / trkAR) を残してください。
+**ざっくり言うと**: どれも商用を含めて自由に使えます。配り直すときに作者の表示 (© 2026 lunacava / trkAR) を残してください。
 アドオンだけは Blender の決まりで GPL なので、アドオンそのものを改変して配るときはソースも一緒に公開してください。
 
-**In short**: everything here can be used freely, including commercially. Keep the credit (© 2026 Hiroki Mori / trkAR)
+**In short**: everything here can be used freely, including commercially. Keep the credit (© 2026 lunacava / trkAR)
 when you redistribute. Only the add-on is GPL (as Blender requires): if you distribute a modified add-on, publish its source too.
 
 | 対象 | ライセンス |
 | --- | --- |
 | `addon/` (Blender アドオン trkAR Camera) | GPL-3.0-or-later (`addon/LICENSE`) |
 | `examples/` (フックの見本) | Apache-2.0 (`examples/LICENSE`、配るときは `examples/NOTICE` も残す) |
-| 文書 (`INTEGRATION.md`・`CLAUDE.md`・サイトの文章) とサンプルのシーン | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — クレジット「© 2026 Hiroki Mori / trkAR」と出典の表示、変えたらそのことの明記 |
+| 文書 (`INTEGRATION.md`・`CLAUDE.md`・サイトの文章) とサンプルのシーン | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — クレジット「© 2026 lunacava / trkAR」と出典の表示、変えたらそのことの明記 |
 | `assets/OCRA.otf` | OCR-A (Wales / Skala)、`assets/OCRA.otf.LICENSE.txt` |
 
 **使ってくれたら、ひとこと連絡をもらえるとうれしいです。** ライセンスの条件ではなく、お願いです。

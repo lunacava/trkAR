@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2026 Hiroki Mori
+# Copyright 2026 lunacava
 # SPDX-License-Identifier: Apache-2.0  (examples/LICENSE。配るときは examples/NOTICE も残す)
 # 使ってくれたら連絡をもらえるとうれしいです (任意): https://github.com/lunacava/trkAR/issues/new?template=used-by.md
 """trkAR のテイクを Amazon S3 に上げるフックの見本 (INTEGRATION.md の 1 章)。

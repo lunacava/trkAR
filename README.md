@@ -18,6 +18,7 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 - `terms.html` — EULA: Apple Standard EULA + NDI® SDK terms (App Store Connect: custom License Agreement)
 - `integration.html` — how to connect trkAR to your own cloud / tools
 - `addon/` — trkAR Camera, public edition (GPL-3.0-or-later, see `addon/LICENSE`)
+- `tools/screen_ndi/` — source of the add-on's screen-capture NDI helper `addon/bin/trkar-screen-ndi` (GPL-3.0-or-later, build with `build.sh`)
 - `examples/` — hook examples (Apache-2.0)
 - `assets/OCRA.otf` — OCR-A (Wales / Skala), see `assets/OCRA.otf.LICENSE.txt`
 
@@ -36,6 +37,7 @@ when you redistribute. Only the add-on is GPL (as Blender requires): if you dist
 | 対象 | ライセンス |
 | --- | --- |
 | `addon/` (Blender アドオン trkAR Camera) | GPL-3.0-or-later (`addon/LICENSE`) |
+| `tools/screen_ndi/` (アドオンの `bin/trkar-screen-ndi` のソース) | GPL-3.0-or-later (`addon/LICENSE` と同じ) |
 | `examples/` (フックの見本) | Apache-2.0 (`examples/LICENSE`、配るときは `examples/NOTICE` も残す) |
 | 文書 (`INTEGRATION.md`・`CLAUDE.md`・サイトの文章) とサンプルのシーン | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — クレジット「© 2026 lunacava / trkAR」と出典の表示、変えたらそのことの明記 |
 | `assets/OCRA.otf` | OCR-A (Wales / Skala)、`assets/OCRA.otf.LICENSE.txt` |

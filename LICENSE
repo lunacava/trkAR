@@ -4,6 +4,7 @@ This repository contains parts under different licenses. There is no single
 license for the whole repository. See README.md ("ライセンス / License").
 
   addon/        trkAR Camera (Blender add-on)    GPL-3.0-or-later   addon/LICENSE
+  tools/screen_ndi/  source of addon/bin/trkar-screen-ndi  GPL-3.0-or-later  (same as addon/LICENSE)
   examples/     hook examples                    Apache-2.0         examples/LICENSE, examples/NOTICE
   docs & site   INTEGRATION.md, CLAUDE.md,       CC BY 4.0          https://creativecommons.org/licenses/by/4.0/
                 website text, sample scenes                         credit: "© 2026 lunacava / trkAR"

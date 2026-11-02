@@ -8,11 +8,12 @@
 
 import ctypes
 import threading
+import time
 
 import bpy
 import numpy as np
 
-from . import ndi
+from . import ndi, perf
 
 IMAGE_NAME = "trkAR NDI"
 
@@ -98,6 +99,8 @@ class NDIInput:
         # 受けている映像にアルファがあるか (trkar_matte.py の "trkAR Matte" など)
         self.has_alpha = False
         self._running = True
+        # 受信を始めた時刻 (映像が来ないまま長いときに、ソースが見つからないと出すため)
+        self.started_at = time.monotonic()
         self._thread = threading.Thread(target=self._recv_loop, name="TrkARNDIIn", daemon=True)
         self._thread.start()
         ensure_image()
@@ -150,6 +153,13 @@ class NDIInput:
                 self.last_error = str(exc)
 
     def _tick(self):
+        started = time.perf_counter()
+        try:
+            return self._tick_body()
+        finally:
+            perf.add("ndi_in", time.perf_counter() - started)
+
+    def _tick_body(self):
         if not self._running:
             return None
         with self._lock:

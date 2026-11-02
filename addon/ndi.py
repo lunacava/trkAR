@@ -50,18 +50,36 @@ class Rate:
     def __init__(self):
         self.reset()
 
+    # いちばん長く来なかった間 (max_gap_ms) を何秒分覚えておくか (止まったあとでも見えるように)
+    GAP_HOLD = 5.0
+
     def reset(self):
         self._fps = 0.0
         self._count = 0
         self._since = time.perf_counter()
+        self._last = None
+        self._gaps = []  # (時刻, 間)。50ms を超えた間だけ
 
     def tick(self):
         self._count += 1
         now = time.perf_counter()
+        if self._last is not None and now - self._last > 0.05:
+            self._gaps.append((now, now - self._last))
+        self._last = now
         if now - self._since >= 1.0:
             self._fps = self._count / (now - self._since)
             self._count = 0
             self._since = now
+
+    @property
+    def max_gap_ms(self):
+        """直近 GAP_HOLD 秒で、次のフレームまでいちばん長く空いた時間 (ms)。今止まっていればその長さも"""
+        now = time.perf_counter()
+        self._gaps = [g for g in self._gaps if now - g[0] <= self.GAP_HOLD]
+        gaps = [gap for _t, gap in self._gaps]
+        if self._last is not None:
+            gaps.append(now - self._last)
+        return max(gaps) * 1000.0 if gaps else 0.0
 
     @property
     def fps(self):

@@ -29,7 +29,7 @@ import time
 import bpy
 import numpy as np
 
-from . import ndi, ndi_input
+from . import ndi, ndi_input, perf
 
 OBJECT_NAME = "trkAR Depth Screen"
 # 人の後ろに置く実写の板 (深度スクリーンの子)。人の居ない所はこれが見える
@@ -356,6 +356,10 @@ class DepthInput:
         self.flat_cutout = False
         # 最後のフレームの人の距離 (m、中央値)
         self.person_depth = None
+        # テイクの再生中に、そのコマで録った人の距離 (メートル。take.Player が入れる。人が見えなかったコマは前のまま)
+        self.recorded_person_depth = None
+        # person_depth を最後に測った時刻 (time.monotonic)。実写の板を人の距離に置くとき、古すぎないかを見る
+        self.person_depth_at = 0.0
         # 受信を止めた後、アルファで切るように平らにしたか (release_to_matte) と、そのときのアルファの有無
         self._released = False
         self._idle_alpha = False
@@ -425,6 +429,8 @@ class DepthInput:
         self._person_alpha = None
         self.has_people = False
         self.person_only = False
+        self.person_depth = None
+        self.person_depth_at = 0.0
         self._released = False
         self._running = True
         self._thread = threading.Thread(target=loop, name="trkARDepthIn", daemon=True)
@@ -654,6 +660,12 @@ class DepthInput:
         valid = (d > 0.0) & (d <= max_distance)
         if confidence is not None:
             valid &= confidence[band] >= self.min_confidence
+        if person is not None and not person_only:
+            # 人の距離 (人物の設定に関係なく測る)。人物の設定が入っていれば、下で穴を埋めた深度で測り直す
+            seen = valid & person[band]
+            if seen.any():
+                self.person_depth = float(np.median(d[seen]))
+                self.person_depth_at = time.monotonic()
 
         people = "ONLY" if person_only else (self.people if person is not None else "OFF")
         matte = self.video_alpha and person is not None
@@ -697,8 +709,10 @@ class DepthInput:
                 valid = valid | hole
             seen = valid & p
             if seen.any():
-                # 受信を止めたときに平らに置く距離 (release_to_matte)
+                # 人の距離 (メートル)。実写の板を人の距離に置く (__init__ の _front_distance) のと、
+                # 受信を止めたときに平らに置く距離 (release_to_matte) に使う
                 self.person_depth = float(np.median(d[seen]))
+                self.person_depth_at = time.monotonic()
         else:
             p = None
             self.person_ratio = 0.0
@@ -772,11 +786,21 @@ class DepthInput:
         self.frames_received += 1
         sink = self.frame_sink
         if sink is not None:
-            sink(timecode, (grid.key, co, face_valid, mask_pixels, meta))
+            # 録画には、このコマで測った人の距離 (メートル) も残す。テイクの再生・書き出しで実写の板を同じ距離に置く
+            seen = self.person_depth is not None and time.monotonic() - self.person_depth_at < 0.2
+            sink(timecode, (grid.key, co, face_valid, mask_pixels,
+                            dict(meta, person_depth=self.person_depth if seen else None)))
 
     # --- メインスレッド ---
 
     def _tick(self):
+        started = time.perf_counter()
+        try:
+            return self._tick_body()
+        finally:
+            perf.add("depth", time.perf_counter() - started)
+
+    def _tick_body(self):
         if not self._running:
             return None
         scene = bpy.context.scene

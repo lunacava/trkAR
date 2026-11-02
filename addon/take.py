@@ -641,6 +641,11 @@ def bake_keys(camera, action, lens_action, start_frame, frames):
         _put_curves(lens_curves, "dof.focus_distance", numbers, [[lens[3] for lens in lenses]])
 
 
+def _playing(window_manager):
+    """どれかのウィンドウでタイムラインを再生しているか"""
+    return any(w.screen is not None and w.screen.is_animation_playing for w in window_manager.windows)
+
+
 class Recorder:
     """REC。録画中はタイムラインを実時間で再生し (シーンのアニメーションも見え方もライブのまま)、
     届いた実写・深度・姿勢を撮影時刻つきで全部溜める。止めたら plan_take でテイクの各フレームに
@@ -670,6 +675,7 @@ class Recorder:
         self._start_mark = (None, 0.0)
         self._restore = {}
         self._stopped_playing_at = None
+        self._play_retried = False
         self._action = None
         self._lens_action = None
         self._info = {}
@@ -753,19 +759,29 @@ class Recorder:
         self.ndi_in.frame_sink = self._on_video
         self.depth_in.frame_sink = self._on_depth
         tracking.sink = self._poses.append
+        self._play_retried = False
         if not bpy.app.timers.is_registered(self._watch):
             bpy.app.timers.register(self._watch, first_interval=0.5)
-        if not context.screen.is_animation_playing:
+        # 再生はウィンドウ (画面) ごとではなく 1 つだけ。別のウィンドウで再生しているのに animation_play を呼ぶと、
+        # 切り替えなので再生を止めてしまう。どのウィンドウでも再生していないときだけ始める
+        if not _playing(context.window_manager):
             bpy.ops.screen.animation_play()
         return path
 
     def _watch(self):
-        """再生が (スペースキーなどで) 止められたら録画も終える。"""
+        """再生が (スペースキーなどで) 止められたら録画も終える。録り始めに再生が始まっていなければ、1 回だけ始め直す"""
         if not self._recording:
             return None
-        screen = bpy.context.screen
-        playing = any(w.screen.is_animation_playing for w in bpy.context.window_manager.windows) \
-            if screen is None else screen.is_animation_playing
+        playing = _playing(bpy.context.window_manager)
+        if not playing and not self._play_retried and time.monotonic() - self.started_at < 1.5:
+            self._play_retried = True
+            windows = bpy.context.window_manager.windows
+            if windows:
+                window = windows[0]
+                with bpy.context.temp_override(window=window, screen=window.screen):
+                    bpy.ops.screen.animation_play()
+                print("trkAR: REC で再生が始まっていなかったので始め直しました")
+                return 0.2
         if playing:
             self._stopped_playing_at = None
         elif self._stopped_playing_at is None:
@@ -903,6 +919,10 @@ class Recorder:
         shutil.rmtree(staging, ignore_errors=True)
 
 
+
+# テイクを再生・書き出すとき、コマを読んだあとに実写の板を置き直す関数 (__init__ が入れる)。callable(scene)
+plate_hook = None
+
 class Player:
     """テイクを再生する。フレームが変わるたびにそのフレームの実写と深度を読み込む。"""
 
@@ -920,6 +940,9 @@ class Player:
         # 置き場を基準の点に戻す前の位置 (前の作りで合わせた置き場。「前の置き場を使う」で戻す) と、そのテイク
         self.previous_anchor = None
         self.previous_for = ""
+        # テイクを再生する前のタイムラインの範囲 (開始, 終了)。再生中はテイクの範囲にするので、止めたら戻す
+        # (戻さないと、ライブに戻ったあともテイクの範囲だけを回り、REC もテイクの開始フレームから始まる)
+        self._scene_range = None
 
     @property
     def active(self):
@@ -927,6 +950,7 @@ class Player:
 
     def start(self, scene, path):
         self.stop(scene)
+        self.depth_in.recorded_person_depth = None
         info = load_info(path)
         camera = bpy.data.objects.get(info.get("camera", "")) or _camera_of(scene)
         if camera is None:
@@ -972,6 +996,7 @@ class Player:
         self.info = info
         self.last_error = ""
         self._loaded = None
+        self._scene_range = (scene.frame_start, scene.frame_end)
         scene.frame_start = info["frame_start"]
         scene.frame_end = info["frame_end"]
         # 描画中にハンドラーから画像を書き換えるので、レンダー中の UI 操作を止める
@@ -998,6 +1023,13 @@ class Player:
         self.save_placement()
         restore, self._restore = self._restore, None
         self.info = None
+        scene_range, self._scene_range = self._scene_range, None
+        if scene is None:
+            scene = bpy.context.scene
+        if scene_range is not None and scene is not None:
+            scene.frame_start, scene.frame_end = scene_range
+            if not scene.frame_start <= scene.frame_current <= scene.frame_end:
+                scene.frame_set(scene.frame_start)
         if restore is None:
             return
         camera = bpy.data.objects.get(restore["camera"])
@@ -1037,8 +1069,13 @@ class Player:
                     mask = d["mask"].astype(np.float32) * (1.0 / 255.0)
                     mask_pixels = np.repeat(mask[..., None], 4, axis=2)
                     mask_pixels[..., 3] = 1.0
+                    meta = json.loads(str(d["meta"]))
                     self.depth_in.apply_recorded(scene, d["key"], d["co"], d["face_valid"].astype(np.float32),
-                                                 mask_pixels, json.loads(str(d["meta"])))
+                                                 mask_pixels, meta)
+                    if meta.get("person_depth") is not None:
+                        self.depth_in.recorded_person_depth = meta["person_depth"]
+            if plate_hook is not None:
+                plate_hook(scene)  # 実写の板を、このコマの人の距離に置き直す (書き出しのレンダー中もコマごとに)
         except Exception as exc:
             self.last_error = str(exc)
 

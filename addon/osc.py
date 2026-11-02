@@ -15,6 +15,10 @@ import time
 
 CAMERA_ADDRESS = "/client/current"
 RIG_ADDRESS = "/client/rig"
+REMOTE_ADDRESS = "/client/remote"
+# Blender → コントローラー (trkAR)。[cameraID, オートフォーカス (0 / 1), ピント距離 (m、実寸), 受け取った AF の回数]。
+# コントローラーの LENS のピントの表示とスライダーを、Blender の今のピントに合わせる
+FOCUS_ADDRESS = "/trkar/focus"
 # iPhone の REC ボタン。[clientID, 1 = 開始 / 0 = 停止]。UDP で落ちないよう iPhone が数回送ってくる
 REC_ADDRESS = "/client/rec"
 # 同じ指示が続けて届いたときに 1 回と数える間隔 (iPhone の再送は 0.1 秒以内)
@@ -22,6 +26,9 @@ REC_REPEAT_WINDOW = 0.5
 # 端末とアプリの情報。[clientID, 機種の識別子, OS 名, OS の版, アプリの版, ビルド, 端末名]。
 # 送信開始時と 5 秒おきに届く
 INFO_ADDRESS = "/client/info"
+# ARKit の光の推定。[clientID, cameraID, ambientIntensity (lm、1000 が標準), ambientColorTemperature (K),
+# dirX, dirY, dirZ, dirIntensity, frameTimestamp, originYaw (度), 球面調和 27 個 (前面カメラのときだけ)]。10Hz
+LIGHT_ADDRESS = "/client/light"
 # 映像 (NDI) と同じ時刻の姿勢を選ぶ・録画で全部拾うために取っておく件数。
 # trkAR 1.1.1 からは毎フレーム (60Hz) 届くので 8 秒分 (1.1 までの 30Hz なら 16 秒分)
 HISTORY = 480
@@ -207,6 +214,25 @@ def _read_string(data, offset):
     return text, (end + 4) & ~3
 
 
+def encode_message(address, args):
+    """OSC メッセージ 1 件のバイト列 (int → i、float → f、str → s)。"""
+    def padded(text):
+        raw = text.encode("utf-8") + b"\0"
+        return raw + b"\0" * (-len(raw) % 4)
+    tags, payload = ",", b""
+    for value in args:
+        if isinstance(value, bool) or isinstance(value, int):
+            tags += "i"
+            payload += struct.pack(">i", int(value))
+        elif isinstance(value, float):
+            tags += "f"
+            payload += struct.pack(">f", value)
+        else:
+            tags += "s"
+            payload += padded(str(value))
+    return padded(address) + padded(tags) + payload
+
+
 def parse_packet(data):
     """OSC パケットを [(address, [args...]), ...] に展開する。bundle も再帰的に開く。"""
     if data.startswith(b"#bundle\0"):
@@ -307,7 +333,7 @@ class CameraRig:
 
     __slots__ = (
         "client_id", "camera_id", "position", "yaw_deg", "tilt_deg", "roll_deg",
-        "focal_mm", "fstop", "focus_distance",
+        "focal_mm", "fstop", "focus_distance", "auto_focus", "af_serial",
     )
 
     @classmethod
@@ -325,7 +351,49 @@ class CameraRig:
         rig.focal_mm = float(args[8])
         rig.fstop = float(args[9])
         rig.focus_distance = float(args[10])
+        # 新しいアプリ: LENS の AF (オートフォーカス) と、AF を切り替えた・ピントを触った回数。古いアプリでは None
+        rig.auto_focus = bool(args[11]) if len(args) >= 13 else None
+        rig.af_serial = int(args[12]) if len(args) >= 13 else None
         return rig
+
+
+class RemoteControl:
+    """`/client/remote` 1 件分。モニターの端末 (client_id) から、別の端末 (target_camera_id) のカメラを動かす入力。
+
+    スティック (move / crane / look / roll) は二乗カーブ済みの -1...1 で、倒し切ったときの速さが
+    move_speed (m/s) と rotate_speed (度/s)。積算は受信側がそのカメラの今の向きでする (tracking._apply_remote)。
+    レンズ (focal_mm / fstop / focus_distance) は CameraRig と同じ意味。pose_reset / rotation_reset は
+    ALL RST / ROT RST を押した回数 (変わったら戻す)
+    """
+
+    __slots__ = (
+        "client_id", "target_camera_id", "move", "crane", "look", "roll", "move_speed", "rotate_speed",
+        "focal_mm", "fstop", "focus_distance", "pose_reset", "rotation_reset", "auto_focus", "af_serial",
+        "received_at",
+    )
+
+    @classmethod
+    def from_args(cls, args):
+        if len(args) < 15:
+            return None
+        remote = cls()
+        remote.client_id = str(args[0])
+        remote.target_camera_id = int(args[1])
+        remote.move = (float(args[2]), float(args[3]))
+        remote.crane = float(args[4])
+        remote.look = (float(args[5]), float(args[6]))
+        remote.roll = float(args[7])
+        remote.move_speed = float(args[8])
+        remote.rotate_speed = float(args[9])
+        remote.focal_mm = float(args[10])
+        remote.fstop = float(args[11])
+        remote.focus_distance = float(args[12])
+        remote.pose_reset = int(args[13])
+        remote.rotation_reset = int(args[14])
+        remote.auto_focus = bool(args[15]) if len(args) >= 17 else None
+        remote.af_serial = int(args[16]) if len(args) >= 17 else None
+        remote.received_at = time.monotonic()
+        return remote
 
 
 class ClientInfo:
@@ -352,6 +420,38 @@ class ClientInfo:
         return device_model_name(self.identifier)
 
 
+class LightEstimate:
+    """`/client/light` 1 件分。direction は `/client/current` と同じ座標 (前面カメラのときだけ。無ければ (0, 0, 0))。
+    harmonics は ARKit のワールドの 2 次の球面調和 (R 9・G 9・B 9 の 27 個) か None。origin_yaw_deg だけ回すと
+    `/client/current` の座標になる"""
+
+    __slots__ = (
+        "client_id", "camera_id", "ambient_intensity", "color_temperature", "direction", "directional_intensity",
+        "frame_time", "origin_yaw_deg", "harmonics", "received_at",
+    )
+
+    @classmethod
+    def from_args(cls, args):
+        if len(args) < 4:
+            return None
+        light = cls()
+        light.client_id = str(args[0])
+        light.camera_id = int(args[1])
+        light.ambient_intensity = float(args[2])
+        light.color_temperature = float(args[3])
+        light.direction = tuple(float(v) for v in args[4:7]) if len(args) >= 7 else (0.0, 0.0, 0.0)
+        light.directional_intensity = float(args[7]) if len(args) >= 8 else 0.0
+        light.frame_time = float(args[8]) if len(args) >= 9 else None
+        light.origin_yaw_deg = float(args[9]) if len(args) >= 10 else 0.0
+        light.harmonics = tuple(float(v) for v in args[10:37]) if len(args) >= 37 else None
+        light.received_at = time.monotonic()
+        return light
+
+    @property
+    def has_direction(self):
+        return any(self.direction) and self.directional_intensity > 0.0
+
+
 class OSCServer:
     def __init__(self):
         self._sock = None
@@ -363,8 +463,14 @@ class OSCServer:
         # frame_time のある CameraPose を古い順に
         self._history = collections.deque(maxlen=HISTORY)
         self._rigs = {}
+        # 動かされる Camera ID ごとに最後に届いた RemoteControl
+        self._remotes = {}
+        # client ごとに最後に届いた送信元の IP (Blender からコントローラーへ返すとき /trkar/focus)
+        self._addresses = {}
         # client ごとに最後に届いた ClientInfo (機種・OS・アプリの版)
         self._infos = {}
+        # client ごとに最後に届いた LightEstimate (光の推定)
+        self._lights = {}
         # iPhone の REC の指示 (client_id, 開始か) と、client ごとに最後に受けた指示 (再送の判定用)
         self._rec_commands = collections.deque(maxlen=16)
         self._rec_last = {}
@@ -394,7 +500,10 @@ class OSCServer:
         self.last_error = ""
         self.last_sender = ""
         self._rigs = {}
+        self._remotes = {}
+        self._addresses = {}
         self._infos = {}
+        self._lights = {}
         self._history.clear()
         self._rec_commands.clear()
         self._rec_last = {}
@@ -446,6 +555,31 @@ class OSCServer:
         with self._lock:
             return self._rigs.get(client_id)
 
+    def address_for(self, client_id):
+        """その clientID が最後に送ってきた IP (なければ None)。"""
+        with self._lock:
+            return self._addresses.get(client_id)
+
+    def send(self, host, port, address, args):
+        """受信と同じソケットから OSC を 1 件送る (失敗しても受信は止めない)。"""
+        sock = self._sock
+        if sock is None or not host:
+            return
+        try:
+            sock.sendto(encode_message(address, args), (host, port))
+        except OSError as exc:
+            self.last_error = "送信: %s" % exc
+
+    def remote_for(self, camera_id):
+        """その Camera ID のカメラを動かす RemoteControl のうち最後に届いたもの (なければ None)。"""
+        with self._lock:
+            return self._remotes.get(camera_id)
+
+    def light_for(self, client_id):
+        """その clientID から最後に届いた LightEstimate (なければ None)。"""
+        with self._lock:
+            return self._lights.get(client_id)
+
     def info_for(self, client_id):
         """その clientID から最後に届いた ClientInfo (なければ None)。"""
         with self._lock:
@@ -464,24 +598,39 @@ class OSCServer:
             self.datagram_count += 1
             self.last_sender = sender[0]
             try:
-                self._handle(data)
+                self._handle(data, sender[0])
             except (ValueError, struct.error) as exc:
                 self.last_error = "parse: %s" % exc
             except Exception as exc:  # noqa: BLE001
                 # ここで落ちるとスレッドだけ消えてソケットは開いたまま (何も届いていないように見える)
                 self.last_error = "受信処理: %s: %s" % (type(exc).__name__, exc)
 
-    def _handle(self, data):
+    def _handle(self, data, sender_ip=None):
         messages = parse_packet(data)
         for address, args in messages:
+            if sender_ip and address in (CAMERA_ADDRESS, RIG_ADDRESS, REMOTE_ADDRESS, INFO_ADDRESS) and args:
+                with self._lock:
+                    self._addresses[str(args[0])] = sender_ip
             if address == REC_ADDRESS:
                 self._push_rec(args)
+                continue
+            if address == LIGHT_ADDRESS:
+                light = LightEstimate.from_args(args)
+                if light is not None:
+                    with self._lock:
+                        self._lights[light.client_id] = light
                 continue
             if address == INFO_ADDRESS:
                 info = ClientInfo.from_args(args)
                 if info is not None:
                     with self._lock:
                         self._infos[info.client_id] = info
+                continue
+            if address == REMOTE_ADDRESS:
+                remote = RemoteControl.from_args(args)
+                if remote is not None:
+                    with self._lock:
+                        self._remotes[remote.target_camera_id] = remote
                 continue
             if address == RIG_ADDRESS:
                 rig = CameraRig.from_args(args)

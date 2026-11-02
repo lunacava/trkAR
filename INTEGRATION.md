@@ -208,10 +208,14 @@ Blender に入れるときはワールドを X 軸まわりに +90° 回しま�
 | アドレス | 引数 | 周期 |
 | --- | --- | --- |
 | `/client/current` | `clientID` (s)・`appMode` (i、常に 0)・`cameraID` (i)・`px py pz` (f、m)・`rx ry rz` (f、度)・`tcH tcM tcS tcF` (i、タイムコード)・`fps` (i、FPS の種類)・`floorHeight` (f、SET GND からの高さ m、未設定は 0)・`hFOV` (f、水平画角 度)・`frameTimestamp` (d、ARFrame.timestamp 秒)・`tcSeconds` (d、0 時からの秒)・`tcSource` (i、0 内部時計 / 1 LTC) | 毎フレーム |
-| `/client/rig` | `clientID`・`cameraID`・`tx ty tz` (m)・`yaw tilt roll` (度)・`focalMM` (0 = AR の画角に連動)・`fStop` (0 = 被写界深度なし)・`focusDistance` | 毎フレーム |
+| `/client/rig` | `clientID`・`cameraID`・`tx ty tz` (m)・`yaw tilt roll` (度)・`focalMM` (0 = AR の画角に連動)・`fStop` (0 = 被写界深度なし)・`focusDistance`・`autoFocus` (i、0 / 1、1.1.3〜)・`afSerial` (i、AF を切り替えた・ピントを触った回数、1.1.3〜) | 毎フレーム |
+| `/client/remote` | `clientID`・相手の `cameraID`・`moveX moveY crane pan tilt roll` (f、スティック -1〜1)・`moveSpeed` (m/s)・`rotateSpeed` (度/s)・`focalMM fStop focusDistance`・`poseReset`・`rotationReset` (i、ALL RST / ROT RST の回数)・`autoFocus`・`afSerial` (1.1.3〜) | 約 30Hz (CTL の TARGET が別のカメラのとき) |
+| `/client/light` | `clientID`・`cameraID`・`ambientIntensity` (lm)・`ambientColorTemperature` (K)・`dirX dirY dirZ`・`dirIntensity`・`frameTimestamp` (d)・`originYaw` (度)・球面調和 27 個 (前面カメラのときだけ) (1.1.2〜) | 10Hz |
 | `/client/rec` | `clientID`・`start` (i、1 開始 / 0 停止) | REC ボタン |
 | `/client/info` | `clientID`・機種の識別子 (例 `iPhone17,1`)・OS 名・OS の版・アプリの版・ビルド・端末名 (すべて s) | 送信開始時と数秒おき |
 | `/worldanchor/match` | `clientID` | ANC ボタン |
+
+Blender → 端末: `/trkar/focus` [`cameraID`、`autoFocus` (0 / 1)、ピント距離 (m)、受け取った `afSerial`] を約 10Hz (アドオン 0.10.7〜)。CTL の LENS のピントの表示を CG のカメラに合わせます。
 
 引数は末尾に足すことがあります (前からの並びは変えません)。`frameTimestamp` は NDI 映像の timecode
 (= ARFrame.timestamp × 10⁷、100ns 単位) と同じ時計なので、姿勢と映像をフレームより細かく対応付けられます。
@@ -259,6 +263,7 @@ iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の 
 | --- | --- | --- | --- |
 | 1 | 1.1、1.1.1 | 0.9.11、0.9.12 | (最初の版) |
 | 1 (名前を trkAR に) | 1.1.2 | 0.10.0 | NDI のソース名とメタデータ・テイクの名前・アドオンの id (`artrk_camera` → `trkar_camera`) を trkAR に揃えた。OSC と UDP は同じ |
+| 1 (リモート操作・AF) | 1.1.3 | 0.10.17 | `/client/remote` と `/trkar/focus` を足し、`/client/rig` の末尾に `autoFocus`・`afSerial` を足した (末尾に足しただけなので、古い版との組み合わせも動く。リモート操作と AF だけ両方の新しい版が要る) |
 
 - 1.1 → 1.1.1 で変わったのは画面 (REC ボタンなど) だけ、0.9.11 → 0.9.12 で変わったのはテイクの置き場と記録だけで、どちらも形式 1 のまま
 - アドオン 0.10.0 は古い名前 (`(ARtrk)`、`<ARtrkDepth>`、`artrk_takes/`、0.9.x で保存した .blend の設定) も読む。

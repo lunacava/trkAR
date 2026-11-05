@@ -13,6 +13,8 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 ## Files
 
 - `index.html` — about
+- `start.html` — getting started (app → add-on → record → export)
+- `generation.html` — files for reference-based video generation models (`for_generation/`)
 - `support.html` — support (App Store Connect: Support URL)
 - `privacy.html` — privacy policy (App Store Connect: Privacy Policy URL)
 - `terms.html` — EULA: Apple Standard EULA + NDI® SDK terms (App Store Connect: custom License Agreement)

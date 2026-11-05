@@ -118,6 +118,8 @@ take_20261021_120000/
   render.mp4           書き出し (MP4 H.264)。PNG 連番を選んだときは render/0001.png …
   render_<.blend の名前>.mp4   書き出しの控え (別の背景で書き出すたびに増える)
   hook.json, hook.log  フックの結果とログ (1 章)
+  for_generation/      生成用の素材 (0.10.20 以降、`生成用の素材を書き出す` を押したとき)。中身は manifest.json と
+                       https://lunacava.github.io/trkAR/generation.html。前のものは for_generation_<日時>/ に残る
 ```
 
 ### take.json

@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "trkar_camera"
-version = "0.10.17"
+version = "0.10.20"
 name = "trkAR Camera"
 tagline = "Drive a camera from trkAR (iPhone) and send its view over NDI"
 maintainer = "lunacava"

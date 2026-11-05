@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Files for video generation / 生成用の素材</title>
+<meta name="description" content="trkAR のテイクから、参照を入れられる動画生成モデルに渡す中間ファイルを作る">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header>
+  <img src="assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+</header>
+<nav><a href="./">Home</a><a href="start.html">Start</a><a href="generation.html">Generation</a><a href="integration.html">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>生成用の素材</h2>
+<p>trkAR で録ったテイクから、<b>参照 (リファレンス) を入れられる動画生成モデル</b>に渡す中間ファイルを作ります。カメラの動きと人の位置はテイクのとおり、見た目は生成で作る、という使い方のためのものです。</p>
+<ul>
+  <li>どのモデルにも寄せていません。条件は「参照の動画と参照の画像を受けて、文章で指示できる」ことだけです</li>
+  <li>trkAR は生成そのものはしません。ファイルをどのモデル・サービスに渡すかは自由です (費用・利用規約はそれぞれのサービスのものに従ってください)</li>
+</ul>
+
+<h3>作り方</h3>
+<ol>
+  <li>Blender アドオン <span class="mono">trkAR Camera</span> 0.10.20 以降で、テイクを選びます (<a href="start.html">はじめかた</a>)</li>
+  <li><span class="mono">録画・テイク</span> の <span class="mono">生成用の素材を書き出す</span> を押します。横の数字は参照の動画の長い辺 (既定 960)、カメラのアイコンは場所のレイアウトを作るか</li>
+  <li><span class="mono">範囲</span> を入れていれば、その範囲だけを書き出します。モデルの長さの上限 (多くは 5〜10 秒) に合わせてください</li>
+  <li>テイクのフォルダの中に <span class="mono">for_generation/</span> ができます。もう一度書き出すと、前のものは <span class="mono">for_generation_&lt;日時&gt;/</span> として残ります</li>
+</ol>
+
+<h3>できるファイル</h3>
+<table>
+  <tr><th>ファイル</th><th>中身</th><th>モデルへの渡し方</th></tr>
+  <tr><td class="mono">reference.mp4</td><td>テイクのカメラの動きで、背景のシーンを灰色の粘土 1 色で描いた動画。人は実写から取った白い輪郭線で、中は黒</td><td>参照の動画 (動き・構図の参照、モーション / ストラクチャーの制御)。プロンプトの <span class="mono">&lt;Video 1&gt;</span></td></tr>
+  <tr><td class="mono">layout.png</td><td>人の立ち位置から 前 (カメラの奥)・右・後ろ (カメラの方)・左 を見た 2×2 の画像</td><td>参照の画像 (場所)。<span class="mono">&lt;Picture 1&gt;</span></td></tr>
+  <tr><td class="mono">actor.jpg</td><td>テイクの実写から、人が大きく・くっきり・明るさの合ったコマを選び、人の外を灰色にした写真</td><td>参照の画像 (人)。<span class="mono">&lt;Picture 2&gt;</span></td></tr>
+  <tr><td class="mono">prompt.txt</td><td>上の 3 つを指し示すプロンプトのひな形 (英語)。最後の行に、誰が・何をして・どんな光と雰囲気かを書き足します</td><td>文章の指示</td></tr>
+  <tr><td class="mono">first_frame.png</td><td>範囲の最初のコマの実写</td><td>最初のコマ (画像から動画を作るモデルの開始の画像)</td></tr>
+  <tr><td class="mono">camera.json</td><td>フレームごとのカメラの位置・向き・画角 (Blender のワールド、Z 上、m)</td><td>カメラの軌跡を受けるツール向け</td></tr>
+  <tr><td class="mono">manifest.json</td><td>各ファイルの意味・大きさ・fps・フレーム数と、上の当てはめ方</td><td>スクリプトから読むとき</td></tr>
+</table>
+<p>モデルによって参照の名前 (<span class="mono">&lt;Video 1&gt;</span>、<span class="mono">@video1</span>、<span class="mono">[ref1]</span> など) や、受けられる参照の数が違います。プロンプトの指し方はモデルの説明に合わせて書き換えてください。参照の画像が 1 枚しか入らないモデルなら、<span class="mono">actor.jpg</span> を優先します。</p>
+
+<h3>うまく作るこつ</h3>
+<ul>
+  <li><b>人の輪郭線には人物のマスクが要ります</b>。録るときに iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク) を入れてください。マスクの無いテイクでは、背景の粘土だけの参照の動画になります</li>
+  <li><b>fps をそろえる</b>: 参照の動画はテイクの fps のまま書き出します (既定の収録は 24fps)。モデルが別の fps を前提にしていると速さが変わるので、モデルに合う fps で録ってください</li>
+  <li><b>縦横比</b>は Blender のシーンの出力のままです。モデルが決まった比率しか受けないときは、シーンの出力の解像度を先に合わせます</li>
+  <li><b>人の写真を外のサービスに送る</b>ときは、写っている人の同意を取ってください</li>
+</ul>
+
+<section lang="en">
+<h2>Files for video generation</h2>
+<p>From a trkAR take, <span class="mono">trkAR Camera</span> 0.10.20+ writes the intermediate files for <b>any video generation model that accepts a reference video and reference images with a text prompt</b>. trkAR does not generate anything itself, and no model or service is assumed.</p>
+<p>Select a take and press <span class="mono">生成用の素材を書き出す</span> (write files for generation) in the <span class="mono">録画・テイク</span> panel. The files go to <span class="mono">&lt;take&gt;/for_generation/</span> (an earlier one is kept as <span class="mono">for_generation_&lt;date&gt;/</span>):</p>
+<ul>
+  <li><span class="mono">reference.mp4</span> — the take's camera move over the set rendered in plain gray clay; the actor is a white outline (filled black). Use it as the reference video (<span class="mono">&lt;Video 1&gt;</span>)</li>
+  <li><span class="mono">layout.png</span> — the location seen from where the actor stands (forward, right, back, left). Reference image (<span class="mono">&lt;Picture 1&gt;</span>)</li>
+  <li><span class="mono">actor.jpg</span> — the clearest, largest frame of the actor with the background grayed out. Reference image (<span class="mono">&lt;Picture 2&gt;</span>)</li>
+  <li><span class="mono">prompt.txt</span> — a prompt template that refers to the files above; add your shot description at the end</li>
+  <li><span class="mono">first_frame.png</span> (first frame of the plate), <span class="mono">camera.json</span> (camera per frame), <span class="mono">manifest.json</span> (what each file is and how to map it)</li>
+</ul>
+<p>Tips: the actor outline needs a person mask (turn on <span class="mono">MASK</span> or <span class="mono">DPT</span> on the iPhone while recording); the video keeps the take's frame rate, so record at the rate your model expects; trim with the range to the model's length limit; get consent before sending someone's photo to an external service.</p>
+</section>
+<footer>
+<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。<br>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+</body>
+</html>

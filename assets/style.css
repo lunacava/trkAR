@@ -29,3 +29,8 @@ a { color: var(--ok); }
 }
 ul { padding-left: 1.3em; }
 footer { margin-top: 56px; font-size: 13px; color: var(--frame); }
+table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--panel); }
+th { font-family: "OCR A", ui-monospace, Menlo, monospace; font-weight: normal; color: var(--accent); border-bottom-color: var(--frame); }
+td.mono { white-space: nowrap; }
+pre { overflow-x: auto; }

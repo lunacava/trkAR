@@ -30,7 +30,7 @@ from bpy.props import (
 )
 from mathutils import Matrix, Vector
 
-from . import (bridge, depth_input, hooks, legacy, ndi_input, os_screen, osc, perf, screen_output, take, tracking,
+from . import (bridge, depth_input, hooks, legacy, ndi_input, os_screen, osc, perf, prep, screen_output, take, tracking,
                view_controller)
 
 STUDIO = False
@@ -382,6 +382,12 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
                ("30", "30 fps", "iPhone の実写と同じ"),
                ("SCENE", "シーンのまま", "出力のフレームレートを変えない")),
         default="24")
+    take_prep_long_side: IntProperty(
+        name="長い辺", default=960, min=256, max=2048, step=16,
+        description="生成用の素材 (参照の動画) の長い辺の画素数。縦横比はシーンの出力のまま (16 の倍数にそろえる)")
+    take_prep_layout: BoolProperty(
+        name="場所のレイアウト", default=True,
+        description="人の立ち位置から前後左右を見た 4 枚 (layout.png) も作る (少し時間がかかる)")
     take_render_size: EnumProperty(
         name="解像度",
         items=(("SCENE", "シーンの出力", "シーンの出力の解像度で書き出す"),
@@ -2184,6 +2190,50 @@ def _prefs(context):
     return context.preferences.addons[__package__].preferences
 
 
+class TRKAR_OT_take_prepare(bpy.types.Operator):
+    bl_idname = "trkar.take_prepare"
+    bl_label = "生成用の素材を書き出す"
+    bl_description = ("参照 (リファレンス) を入れられる動画生成モデルに渡す中間ファイルを <テイク>/for_generation/ に書く: "
+                      "参照の動画 (粘土の背景 + 人の輪郭線)・役者の写真・場所のレイアウト・最初のコマ・カメラ・プロンプトのひな形。"
+                      "範囲を入れていればその範囲。生成はしない")
+
+    def execute(self, context):
+        if _export["running"] or recorder.recording:
+            self.report({"ERROR"}, "録画・書き出しの最中です")
+            return {"CANCELLED"}
+        if not _start_player(self, context):
+            return {"CANCELLED"}
+        scene, settings = context.scene, context.scene.trkar
+        camera = settings.camera or scene.camera
+        if camera is None:
+            self.report({"ERROR"}, "カメラがありません")
+            return {"CANCELLED"}
+        first, last = player.info["frame_start"], player.info["frame_end"]
+        if settings.take_use_range:
+            first, last = _take_range(settings, scene.render, first, last)
+        wm = context.window_manager
+        count = last - first + 1
+        total = count * 2 + 3
+        stage_base = {"clay": 0, "reference": count, "encode": total - 3, "actor": total - 2, "layout": total - 1}
+
+        def progress(stage, done, _count):
+            wm.progress_update(stage_base.get(stage, 0) + done)
+
+        wm.progress_begin(0, total)
+        try:
+            _out, manifest = prep.export(scene, player, camera, settings.take_prep_long_side, first, last,
+                                         settings.take_prep_layout, progress)
+        except Exception as exc:
+            self.report({"ERROR"}, "生成用の素材を書き出せません: %s" % exc)
+            return {"CANCELLED"}
+        finally:
+            wm.progress_end()
+        ref = manifest["files"]["reference.mp4"]
+        self.report({"INFO"}, "%s/ に書き出しました (%d×%d、%d フレーム、%.0f 秒)" % (
+            prep.FOLDER, ref["width"], ref["height"], ref["frames"], manifest["seconds_to_make"]))
+        return {"FINISHED"}
+
+
 class TRKAR_OT_take_open(bpy.types.Operator):
     bl_idname = "trkar.take_open"
     bl_label = "フォルダを開く"
@@ -2754,6 +2804,12 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
             row = layout.row(align=True)
             row.operator("trkar.take_render", icon="RENDER_ANIMATION")
             row.prop(settings, "take_render_format", text="")
+            # 参照を入れられる動画生成モデルに渡す中間ファイル (prep.py)。生成はしない
+            row = layout.row(align=True)
+            row.operator("trkar.take_prepare", icon="FILE_MOVIE")
+            row.prop(settings, "take_prep_long_side", text="")
+            row.prop(settings, "take_prep_layout", text="", icon="VIEW_CAMERA")
+            row.operator("trkar.take_open", icon="FILE_FOLDER", text="").sub = prep.FOLDER
             row = layout.row(align=True)
             row.prop(settings, "take_use_range", toggle=True)
             sub = row.row(align=True)
@@ -3121,6 +3177,7 @@ classes = (
     TRKAR_OT_take_anchor_previous,
     TRKAR_OT_take_anchor_remove,
     TRKAR_OT_take_render,
+    TRKAR_OT_take_prepare,
     TRKAR_OT_take_open,
     TRKAR_OT_take_hook_run,
     TRKAR_OT_bridge_start,

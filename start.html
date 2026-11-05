@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Getting started / はじめかた</title>
+<meta name="description" content="trkAR と Blender アドオン trkAR Camera のはじめかた">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header>
+  <img src="assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+</header>
+<nav><a href="./">Home</a><a href="start.html">Start</a><a href="generation.html">Generation</a><a href="integration.html">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>はじめかた</h2>
+<p>iPhone / iPad の trkAR で撮ったカメラの動きで、Blender のカメラを動かし、テイクを録って書き出すまでの流れです。</p>
+<pre class="mono" style="white-space:pre-wrap;color:var(--accent)">iPhone trkAR ──OSC (カメラの位置・向き・画角)──▶ Blender のカメラが同じように動く
+   │    ▲                                      │
+   │    └── NDI「Blender (trkAR)」(カメラ視点) ─┤  iPhone の MONI で CG を見ながら撮れる
+   └── NDI「trkAR」(実写) ──▶ Blender の中で人と CG を重ねる</pre>
+
+<h3>1. 用意するもの</h3>
+<ul>
+  <li>ARKit に対応した iPhone / iPad (iOS 16 以降)。深度は LiDAR のある機種 (Pro 系) の背面カメラで出ます</li>
+  <li>Mac か Windows の PC と <a href="https://www.blender.org/">Blender</a> 4.2 以降 (5.1 以降をおすすめ。画面をそのまま NDI で送るのは 5.3 以降)</li>
+  <li><a href="https://ndi.video/tools/">NDI Tools</a> (無料)。映像の送受信に使います</li>
+  <li>iPhone と PC を<b>同じネットワーク</b>に。有線 LAN が安定します。Wi-Fi は混んでいると映像がカクつきます</li>
+</ul>
+
+<h3>2. アプリ (iPhone / iPad)</h3>
+<ol>
+  <li>App Store から trkAR (英語のストアでは trkAR Cam) を入れ、カメラ・ローカルネットワーク・マイクを許可します</li>
+  <li>横向きで起動し、周りをゆっくり見回します。左上の <span class="mono">WLDtrk</span> の下が <span class="mono">Mapped</span> になれば準備完了です</li>
+  <li><b>床を決めます</b>。床が見つかると自動で決まります。決まっていないときは、画面中央の十字を床に向けて <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span> (か上の列の <span class="mono">SET GND</span>) を押します</li>
+  <li><span class="mono">✱</span> (設定) の <span class="mono">PC IP Address</span> に PC の IP、<span class="mono">Port</span> に <span class="mono">8000</span> を入れます (PC の IP は Mac なら システム設定 &gt; ネットワーク、Windows なら <span class="mono">ipconfig</span>)</li>
+</ol>
+
+<h3>3. Blender アドオン</h3>
+<ol>
+  <li><a href="https://github.com/lunacava/trkAR/releases">Releases</a> から <span class="mono">trkar_camera-&lt;版&gt;.zip</span> を落とし、Blender のウィンドウにドラッグ&amp;ドロップします (<span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; ▼ &gt; ディスクからインストール</span> でも)</li>
+  <li><b>macOS では、システム設定 &gt; プライバシーとセキュリティ &gt; ローカルネットワーク で Blender をオン</b>にして、Blender を起動し直します (いちばん多いつまずきです)</li>
+  <li>試すシーンは <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">サンプルのシーン</a> (駅のホーム・教室) が使えます</li>
+</ol>
+
+<h3>4. つなぐ</h3>
+<ol>
+  <li>3D ビューで <span class="mono">N</span> キーを押してサイドバーを出し、<span class="mono">trkAR</span> タブを開きます</li>
+  <li>Blender でカメラを撮りたい場所に置き、<span class="mono">trkAR 受信</span> の ▶ を押します。テンキー <span class="mono">0</span> (カメラ視点) にして iPhone を動かすと、カメラが同じように動きます</li>
+  <li>実写も使うときは、iPhone の <span class="mono">CAM</span> を入れ、<span class="mono">trkAR 受信</span> で実写 (NDI) のソースに <span class="mono">&lt;iPhone の名前&gt; (trkAR)</span> を選びます。人だけを残すなら iPhone の <span class="mono">MASK</span> も入れます</li>
+  <li>iPhone で CG を見ながら撮るときは、<span class="mono">NDI 送出</span> でカメラ視点を送り、iPhone の <span class="mono">MONI</span> で <span class="mono">&lt;PC の名前&gt; (Blender (trkAR))</span> を選びます</li>
+</ol>
+
+<h3>5. 録って書き出す</h3>
+<ol>
+  <li><span class="mono">録画・テイク</span> の <span class="mono">REC</span> (か iPhone の REC) で、タイムラインを再生しながらカメラの動き・実写・深度を録ります。もう一度押すか、再生を止めると終わります</li>
+  <li><span class="mono">テイクを再生</span> で録ったテイクを見直し、CG やライトを直します。<span class="mono">ライブに戻る</span> で受信に戻ります</li>
+  <li><span class="mono">書き出し</span> でカメラ視点を <span class="mono">render.mp4</span> にします</li>
+  <li>動画生成 AI に渡すなら、<span class="mono">生成用の素材を書き出す</span> で中間ファイルを作ります → <a href="generation.html">生成用の素材</a></li>
+</ol>
+<p>テイクは、保存した .blend の隣の <span class="mono">trkar_takes/</span> に <span class="mono">take_日付_時刻/</span> として残ります。</p>
+
+<h3>うまくいかないとき</h3>
+<table>
+  <tr><th>症状</th><th>確かめること</th></tr>
+  <tr><td>カメラが動かない</td><td>パネルの <span class="mono">受信 n 件 / UDP m</span> が 0 なら、Blender のローカルネットワークの許可・iPhone の PC IP Address と Port・同じネットワークか。<span class="mono">姿勢 ○ Hz</span> が出ていれば届いています</td></tr>
+  <tr><td>CG の床と実写の床が合わない</td><td>iPhone で床が決まっているか (パネルに「床が未設定」と出ていないか)。十字を床に向けて SET GND をやり直す</td></tr>
+  <tr><td>NDI のソースが出ない</td><td>NDI Tools が入っているか。同じネットワークか。会社や学校の Wi-Fi は端末どうしの通信が止められていることがあります</td></tr>
+  <tr><td>映像がカクつく・遅れる</td><td>iPad / iPhone と PC を有線 LAN に。iPhone の CAM Resolution と MONI Resolution を Low に。iPhone が熱い (HOT) なら冷やす</td></tr>
+  <tr><td>実写が灰色・白</td><td>3D ビューがソリッド表示。マテリアルプレビューにする</td></tr>
+</table>
+<p>そのほかは <a href="support.html">サポート</a> へ。アプリとアドオンの版の組み合わせは <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md#5-アプリとアドオンの組み合わせ">INTEGRATION.md の 5 章</a> にあります (どの組み合わせでも動きます)。</p>
+
+<section lang="en">
+<h2>Getting started</h2>
+<ol>
+  <li><b>You need</b> an ARKit iPhone / iPad (iOS 16+, LiDAR for depth), a Mac or Windows PC with Blender 4.2+ (5.1+ recommended), <a href="https://ndi.video/tools/">NDI Tools</a>, and both on the same network (wired is the most stable)</li>
+  <li><b>App</b>: install trkAR Cam from the App Store and allow camera, local network and microphone. Look around until <span class="mono">WLDtrk</span> shows <span class="mono">Mapped</span>. The floor is set automatically once found; otherwise aim the center crosshair at the floor and tap <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span>. In <span class="mono">✱</span> Settings, enter your PC's IP and port <span class="mono">8000</span></li>
+  <li><b>Add-on</b>: get <span class="mono">trkar_camera-&lt;version&gt;.zip</span> from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and drop it on Blender. On macOS, turn on Blender in System Settings &gt; Privacy &amp; Security &gt; Local Network and restart Blender. Try the <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">sample scenes</a></li>
+  <li><b>Connect</b>: in the 3D view press <span class="mono">N</span>, open the <span class="mono">trkAR</span> tab, place the camera and press ▶ on <span class="mono">trkAR 受信</span> (receive). Turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone&gt; (trkAR)</span> to bring in the live video; send the camera view with <span class="mono">NDI 送出</span> and watch it on the iPhone with <span class="mono">MONI</span></li>
+  <li><b>Record and export</b>: <span class="mono">REC</span> records the camera move, video and depth while the timeline plays; <span class="mono">テイクを再生</span> plays a take back; <span class="mono">書き出し</span> exports <span class="mono">render.mp4</span>; <span class="mono">生成用の素材を書き出す</span> writes the files for video generation models — see <a href="generation.html">Generation</a></li>
+</ol>
+<p>Trouble? Check that the panel's packet counter goes up (Blender's local network permission, the PC IP and port on the iPhone), that the floor is set on the iPhone, and use wired networking if the video stutters. More on <a href="support.html">Support</a>.</p>
+</section>
+<footer>
+<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。<br>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+</body>
+</html>

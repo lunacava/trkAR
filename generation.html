@@ -19,7 +19,7 @@
 <h2>生成用の素材</h2>
 <p>trkAR で録ったテイクから、<b>参照 (リファレンス) を入れられる動画生成モデル</b>に渡す中間ファイルを作ります。カメラの動きと人の位置はテイクのとおり、見た目は生成で作る、という使い方のためのものです。</p>
 <ul>
-  <li>どのモデルにも寄せていません。条件は「参照の動画と参照の画像を受けて、文章で指示できる」ことだけです</li>
+  <li>対象となるモデルは、<b>参照 (リファレンス) として動画と画像を入力でき、プロンプトで指示できる</b>動画生成モデルです</li>
   <li>trkAR は生成そのものはしません。ファイルをどのモデル・サービスに渡すかは自由です (費用・利用規約はそれぞれのサービスのものに従ってください)</li>
 </ul>
 
@@ -54,7 +54,7 @@
 
 <section lang="en">
 <h2>Files for video generation</h2>
-<p>From a trkAR take, <span class="mono">trkAR Camera</span> 0.10.21+ writes the intermediate files for <b>any video generation model that accepts a reference video and reference images with a text prompt</b>. trkAR does not generate anything itself, and no model or service is assumed.</p>
+<p>From a trkAR take, <span class="mono">trkAR Camera</span> 0.10.21+ writes the intermediate files for <b>any video generation model that accepts a reference video and reference images with a text prompt</b>. The target is a video generation model that takes reference videos and images as input and is directed with a text prompt. trkAR does not generate anything itself.</p>
 <p>Select a take and press <span class="mono">生成用の素材を書き出す</span> (write files for generation) in the <span class="mono">録画・テイク</span> panel. The files go to <span class="mono">&lt;take&gt;/for_generation/</span> (an earlier one is kept as <span class="mono">for_generation_&lt;date&gt;/</span>):</p>
 <ul>
   <li><span class="mono">reference.mp4</span> — the take's camera move over the set rendered in plain gray clay; the actor is a white outline (filled black). Use it as the reference video (<span class="mono">&lt;Video 1&gt;</span>)</li>

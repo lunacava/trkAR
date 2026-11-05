@@ -18,16 +18,21 @@ from . import ndi, perf
 IMAGE_NAME = "trkAR NDI"
 
 
+# 映像が届くまでの画像の色。透明にしておくと、板を置いたままでも受け始めるまでは CG を隠さない
+# (板のマテリアルは画像のアルファで透ける。_video_material)
+BLANK_COLOR = (0.0, 0.0, 0.0, 0.0)
+
+
 def ensure_image(width=16, height=9):
     image = bpy.data.images.get(IMAGE_NAME)
     if image is None:
         image = bpy.data.images.new(IMAGE_NAME, width, height, alpha=True)
-        image.generated_color = (0.0, 0.0, 0.0, 1.0)
+        image.generated_color = BLANK_COLOR
     return image
 
 
 def blank_live_images(names):
-    """ライブ映像の画像を黒の生成画像に戻す (.blend の保存の前に呼ぶ)。
+    """ライブ映像の画像を透明な生成画像に戻す (.blend の保存の前と、開いたときに呼ぶ)。
 
     中身を書き換えた生成画像は、保存のときに Blender が .blend に埋め込む。
     そのままだと保存した瞬間のカメラのコマ (人や部屋) がシーンに残るので、空にしてから保存させる。
@@ -40,7 +45,7 @@ def blank_live_images(names):
             image.unpack(method="REMOVE")
         image.source = "GENERATED"
         image.generated_type = "BLANK"
-        image.generated_color = (0.0, 0.0, 0.0, 1.0)
+        image.generated_color = BLANK_COLOR
         image.generated_width, image.generated_height = 16, 9
 
 

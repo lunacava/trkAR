@@ -335,6 +335,10 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
         description="trkAR 受信の ▶ で実写を受けるとき、RVM の切り抜きも始めて、切り抜いた映像 (trkAR Matte) を受ける")
     ndi_in_low: BoolProperty(name="低解像度で受ける", default=False,
                              description="NDI のプレビュー用ストリームを受ける (軽いが解像度が下がる)")
+    ndi_in_auto_screen: BoolProperty(
+        name="受信開始で板を置く", default=True,
+        description="実写の受信を始めたとき、受けた映像を映すもの (板・スクリーン・深度スクリーン・カメラの背景・"
+                    "映像を使うマテリアル) が何も無ければ、カメラの前に板を置く (「カメラの前に置く」と同じ)")
 
 
     # --- 受信 (LiDAR 深度 → 立体スクリーン) ---
@@ -885,7 +889,40 @@ class TRKAR_OT_ndi_in_start(bpy.types.Operator):
             ndi_in.stop()
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
+        _ensure_video_shown(self, context)
         return {"FINISHED"}
+
+
+def _video_shown(context):
+    """受けた映像 (画像 trkAR NDI) を映しているものがシーンにあるか: 板・スクリーン・深度スクリーンなど、
+    その画像を使うマテリアルが使われているか、カメラの背景に出しているか"""
+    image = bpy.data.images.get(ndi_input.IMAGE_NAME)
+    if image is None:
+        return False
+    for material in bpy.data.materials:
+        if material.users and material.node_tree is not None and any(
+                node.type == "TEX_IMAGE" and node.image == image for node in material.node_tree.nodes):
+            return True
+    camera = context.scene.trkar.camera or context.scene.camera
+    if camera is not None and camera.type == "CAMERA":
+        return any(bg.image == image for bg in camera.data.background_images)
+    return False
+
+
+def _ensure_video_shown(operator, context):
+    """実写を受け始めたのに映すものが何も無ければ、カメラの前に板を置く (初めてのときに「映らない」とならないように)"""
+    settings = context.scene.trkar
+    if not settings.ndi_in_auto_screen or _video_shown(context):
+        return
+    camera = settings.camera or context.scene.camera
+    if camera is None or camera.type != "CAMERA":
+        return
+    try:
+        bpy.ops.trkar.ndi_in_front()
+    except RuntimeError as exc:
+        operator.report({"WARNING"}, "実写を映す板を置けません: %s" % exc)
+        return
+    operator.report({"INFO"}, "実写を映す板をカメラの前に置きました (板・背景 で変えられます)")
 
 
 class TRKAR_OT_ndi_in_stop(bpy.types.Operator):
@@ -972,6 +1009,7 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
         if bpy.app.timers.is_registered(_switch_to_matte):
             bpy.app.timers.unregister(_switch_to_matte)
         bpy.app.timers.register(_switch_to_matte, first_interval=1.0)
+        _ensure_video_shown(self, context)
         return {"FINISHED"}
 
 
@@ -2688,6 +2726,7 @@ def _draw_ndi_in(layout, context):
     row.prop(settings, "ndi_in_source", text="")
     row.menu("TRKAR_MT_ndi_sources", text="", icon="DOWNARROW_HLT")
     col.prop(settings, "ndi_in_low")
+    col.prop(settings, "ndi_in_auto_screen")
     if settings.ndi_in_source and settings.ndi_name and settings.ndi_name in settings.ndi_in_source:
         layout.label(text="Blender 自身の送出です (映像がループします)", icon="ERROR")
     if ndi_in.running:
@@ -3280,6 +3319,13 @@ def _on_load_post(*_args):
         legacy.migrate()
     except Exception as exc:  # noqa: BLE001  引き継げなくても開くのは止めない
         print("trkAR: 古い名前のデータを引き継げません: %s" % exc)
+    # 前の版で保存した .blend は、受信前の画像が黒 (不透明) で、板が CG を隠していた。透明に戻す
+    try:
+        image = bpy.data.images.get(ndi_input.IMAGE_NAME)
+        if image is not None and image.source == "GENERATED" and tuple(image.generated_color) != ndi_input.BLANK_COLOR:
+            ndi_input.blank_live_images((ndi_input.IMAGE_NAME,))
+    except Exception as exc:  # noqa: BLE001
+        print("trkAR: 受信前の画像を透明にできません: %s" % exc)
 
 
 @persistent

@@ -25,7 +25,7 @@
 
 <h3>作り方</h3>
 <ol>
-  <li>Blender アドオン <span class="mono">trkAR Camera</span> 0.10.20 以降で、テイクを選びます (<a href="start.html">はじめかた</a>)</li>
+  <li>Blender アドオン <span class="mono">trkAR Camera</span> 0.10.21 以降で、テイクを選びます (<a href="start.html">はじめかた</a>)</li>
   <li><span class="mono">録画・テイク</span> の <span class="mono">生成用の素材を書き出す</span> を押します。横の数字は参照の動画の長い辺 (既定 960)、カメラのアイコンは場所のレイアウトを作るか</li>
   <li><span class="mono">範囲</span> を入れていれば、その範囲だけを書き出します。モデルの長さの上限 (多くは 5〜10 秒) に合わせてください</li>
   <li>テイクのフォルダの中に <span class="mono">for_generation/</span> ができます。もう一度書き出すと、前のものは <span class="mono">for_generation_&lt;日時&gt;/</span> として残ります</li>
@@ -54,7 +54,7 @@
 
 <section lang="en">
 <h2>Files for video generation</h2>
-<p>From a trkAR take, <span class="mono">trkAR Camera</span> 0.10.20+ writes the intermediate files for <b>any video generation model that accepts a reference video and reference images with a text prompt</b>. trkAR does not generate anything itself, and no model or service is assumed.</p>
+<p>From a trkAR take, <span class="mono">trkAR Camera</span> 0.10.21+ writes the intermediate files for <b>any video generation model that accepts a reference video and reference images with a text prompt</b>. trkAR does not generate anything itself, and no model or service is assumed.</p>
 <p>Select a take and press <span class="mono">生成用の素材を書き出す</span> (write files for generation) in the <span class="mono">録画・テイク</span> panel. The files go to <span class="mono">&lt;take&gt;/for_generation/</span> (an earlier one is kept as <span class="mono">for_generation_&lt;date&gt;/</span>):</p>
 <ul>
   <li><span class="mono">reference.mp4</span> — the take's camera move over the set rendered in plain gray clay; the actor is a white outline (filled black). Use it as the reference video (<span class="mono">&lt;Video 1&gt;</span>)</li>

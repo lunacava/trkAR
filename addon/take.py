@@ -951,6 +951,10 @@ class Player:
     def start(self, scene, path):
         self.stop(scene)
         self.depth_in.recorded_person_depth = None
+        # 名前を変える前の .blend (古い名前の置き場の子になったカメラなど) をここでも付け替える。
+        # アドオンを有効にする前に開いたファイルでは、開いたときの付け替え (legacy.migrate) が走っていないため
+        from . import legacy
+        legacy.rename_data()
         info = load_info(path)
         camera = bpy.data.objects.get(info.get("camera", "")) or _camera_of(scene)
         if camera is None:

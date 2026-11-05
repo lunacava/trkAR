@@ -33,7 +33,7 @@ FOLDER = "for_generation"
 # 書き出しに入れないもの (ライブ・再生の板や深度スクリーン)
 HIDE_NAMES = ("trkAR NDI Screen", "trkAR Camera Screen", "trkAR Depth Screen", "trkAR Depth Background")
 CLAY_COLOR = (0.62, 0.62, 0.62)
-# 輪郭線 (Sobel の強さ、0〜1)。強い線と、それにつながる弱い線を残す (ffmpeg の edgedetect と同じ 0.08 / 0.22)
+# 輪郭線 (Canny) のしきい値。Sobel の |gx| + |gy| (画素 0〜1) で、ffmpeg の edgedetect と同じ 0.08 / 0.22
 EDGE_LOW, EDGE_HIGH = 0.08, 0.22
 LAYOUT_VIEW = (640, 360)
 LAYOUT_FOV = 90.0
@@ -92,16 +92,51 @@ def _dilate(mask, passes):
     return out
 
 
+# ffmpeg の edgedetect と同じ 5×5 のガウス (σ ≈ 1.4、合計 159)
+_GAUSS = ((2, 4, 5, 4, 2), (4, 9, 12, 9, 4), (5, 12, 15, 12, 5), (4, 9, 12, 9, 4), (2, 4, 5, 4, 2))
+
+
+def _blur5(g):
+    """5×5 のガウス (端は端の値をのばす)"""
+    h, w = g.shape
+    p = np.pad(g, 2, mode="edge")
+    out = np.zeros_like(g)
+    for dy, row in enumerate(_GAUSS):
+        for dx, weight in enumerate(row):
+            out += weight * p[dy:dy + h, dx:dx + w]
+    return out / 159.0
+
+
 def edges(gray):
-    """Sobel の強さ (0〜1) から、強い線と、それに隣り合う弱い線 (1 回だけ広げるヒステリシス) を bool で"""
-    g = gray
+    """Canny の輪郭線 (bool)。ffmpeg の edgedetect と同じ手順: ぼかす → Sobel (|gx| + |gy|) → 勾配の向きの
+    非極大値抑制で線を細くする → 強い線 (> EDGE_HIGH) と、強い線に隣り合う弱い線 (> EDGE_LOW) を残す"""
+    g = np.pad(_blur5(gray.astype(np.float32)), 1, mode="edge")
     gx = (g[:-2, 2:] + 2 * g[1:-1, 2:] + g[2:, 2:]) - (g[:-2, :-2] + 2 * g[1:-1, :-2] + g[2:, :-2])
     gy = (g[2:, :-2] + 2 * g[2:, 1:-1] + g[2:, 2:]) - (g[:-2, :-2] + 2 * g[:-2, 1:-1] + g[:-2, 2:])
-    mag = np.zeros_like(g)
-    mag[1:-1, 1:-1] = np.hypot(gx, gy) / 4.0
-    strong = mag > EDGE_HIGH
-    weak = mag > EDGE_LOW
-    return strong | (weak & _dilate(strong, 1))
+    mag = np.abs(gx) + np.abs(gy)
+    # 勾配の向きを 4 つに分けて、その向きの両隣より大きいものだけ残す (画像は下へ y が増える)
+    angle = (np.degrees(np.arctan2(gy, gx)) + 180.0) % 180.0
+    m = np.pad(mag, 1)
+    h, w = mag.shape
+    def at(dy, dx):
+        return m[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+    horizontal = (angle < 22.5) | (angle >= 157.5)
+    down_right = (angle >= 22.5) & (angle < 67.5)
+    vertical = (angle >= 67.5) & (angle < 112.5)
+    down_left = (angle >= 112.5) & (angle < 157.5)
+    keep = ((horizontal & (mag >= at(0, -1)) & (mag >= at(0, 1)))
+            | (down_right & (mag >= at(1, 1)) & (mag >= at(-1, -1)))
+            | (vertical & (mag >= at(-1, 0)) & (mag >= at(1, 0)))
+            | (down_left & (mag >= at(1, -1)) & (mag >= at(-1, 1))))
+    thin = np.where(keep, mag, 0.0)
+    strong = thin > EDGE_HIGH
+    weak = thin > EDGE_LOW
+    sp = np.pad(strong, 1)
+    near = np.zeros_like(strong)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            near |= sp[dy:dy + h, dx:dx + w]
+    return strong | (weak & near)
 
 
 def _sharpness(gray, mask=None):

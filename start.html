@@ -18,10 +18,126 @@
 
 <h2>はじめかた</h2>
 <p>iPhone / iPad の trkAR で撮ったカメラの動きで、Blender のカメラを動かし、テイクを録って書き出すまでの流れです。</p>
-<pre class="mono" style="white-space:pre-wrap;color:var(--accent)">iPhone trkAR ──OSC (カメラの位置・向き・画角)──▶ Blender のカメラが同じように動く
-   │    ▲                                      │
-   │    └── NDI「Blender (trkAR)」(カメラ視点) ─┤  iPhone の MONI で CG を見ながら撮れる
-   └── NDI「trkAR」(実写) ──▶ Blender の中で人と CG を重ねる</pre>
+<figure class="diagram">
+<svg viewBox="0 0 720 330" role="img" aria-labelledby="d1t">
+  <title id="d1t">iPhone の trkAR と PC の Blender の間で流れるもの</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#e9f6fc"/>
+    </marker>
+    <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ffd479"/>
+    </marker>
+  </defs>
+  <!-- iPhone -->
+  <rect x="10" y="20" width="200" height="270" rx="18" fill="#18163a" stroke="#899ac9" stroke-width="1.5"/>
+  <text x="110" y="52" text-anchor="middle" class="dh">iPhone / iPad</text>
+  <text x="110" y="72" text-anchor="middle" class="ds">アプリ trkAR</text>
+  <g class="dl">
+    <text x="30" y="108">● カメラ (ARKit)</text>
+    <text x="30" y="128" class="ds">位置・向き・画角を測る</text>
+    <text x="30" y="162">● CAM / MASK</text>
+    <text x="30" y="182" class="ds">実写 (人だけにもできる)</text>
+    <text x="30" y="216">● MONI</text>
+    <text x="30" y="236" class="ds">CG を見ながら撮る</text>
+    <text x="30" y="270">● REC</text>
+  </g>
+  <!-- PC -->
+  <rect x="510" y="20" width="200" height="270" rx="10" fill="#18163a" stroke="#899ac9" stroke-width="1.5"/>
+  <text x="610" y="52" text-anchor="middle" class="dh">PC</text>
+  <text x="610" y="72" text-anchor="middle" class="ds">Blender + trkAR Camera</text>
+  <g class="dl">
+    <text x="530" y="108">● カメラが同じに動く</text>
+    <text x="530" y="128" class="ds">CG の部屋の中を歩ける</text>
+    <text x="530" y="162">● 実写の板</text>
+    <text x="530" y="182" class="ds">人を CG の中に立たせる</text>
+    <text x="530" y="216">● NDI 送出</text>
+    <text x="530" y="236" class="ds">カメラ視点を送り返す</text>
+    <text x="530" y="270">● テイクを録る</text>
+  </g>
+  <!-- 矢印 -->
+  <line x1="215" y1="104" x2="505" y2="104" stroke="#e9f6fc" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="360" y="96" text-anchor="middle" class="da">OSC: カメラの位置・向き・画角 (毎フレーム)</text>
+  <line x1="215" y1="158" x2="505" y2="158" stroke="#e9f6fc" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="360" y="150" text-anchor="middle" class="da">NDI「&lt;iPhone&gt; (trkAR)」: 実写</text>
+  <line x1="505" y1="212" x2="215" y2="212" stroke="#ffd479" stroke-width="2" marker-end="url(#aw)"/>
+  <text x="360" y="204" text-anchor="middle" class="dw">NDI「Blender (trkAR)」: CG のカメラ視点</text>
+  <line x1="215" y1="266" x2="505" y2="266" stroke="#e9f6fc" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+  <text x="360" y="258" text-anchor="middle" class="da">iPhone の REC で録画の開始・停止</text>
+  <text x="360" y="318" text-anchor="middle" class="ds">iPhone と PC は同じネットワークに (有線 LAN が安定)</text>
+</svg>
+</figure>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 400" role="img" aria-labelledby="d2t">
+  <title id="d2t">撮影の流れ: 準備・つなぐ・撮る・見直す・書き出す・生成用の素材</title>
+  <defs>
+    <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#899ac9"/>
+    </marker>
+  </defs>
+  <g class="card">
+    <rect x="10" y="10" width="220" height="170" rx="8"/>
+    <text x="26" y="40" class="dn">1</text><text x="52" y="40" class="dh">準備</text>
+    <text x="26" y="72" class="tag">iPhone</text><text x="80" y="72">床を決める</text>
+    <text x="80" y="92" class="ds">SET GND (十字を床へ)</text>
+    <text x="80" y="114">PC の IP を入れる</text>
+    <text x="26" y="146" class="tag">Blender</text><text x="80" y="146">シーンを開く</text>
+    <text x="80" y="166" class="ds">カメラを撮りたい所に置く</text>
+  </g>
+  <g class="card">
+    <rect x="250" y="10" width="220" height="170" rx="8"/>
+    <text x="266" y="40" class="dn">2</text><text x="292" y="40" class="dh">つなぐ</text>
+    <text x="266" y="72" class="tag">Blender</text><text x="320" y="72">trkAR 受信 ▶</text>
+    <text x="320" y="92" class="ds">カメラが iPhone に付く</text>
+    <text x="266" y="124" class="tag">iPhone</text><text x="320" y="124">CAM (実写)</text>
+    <text x="320" y="146">MONI (CG を見る)</text>
+    <text x="320" y="166" class="ds">Blender は NDI 送出 ▶</text>
+  </g>
+  <g class="card">
+    <rect x="490" y="10" width="220" height="170" rx="8"/>
+    <text x="506" y="40" class="dn">3</text><text x="532" y="40" class="dh">撮る</text>
+    <text x="506" y="72" class="tag">どちらか</text><text x="560" y="72">REC</text>
+    <text x="560" y="92" class="ds">タイムラインが流れる</text>
+    <text x="560" y="116">演技・カメラワーク</text>
+    <text x="560" y="136" class="ds">シーンの動きと同じ</text>
+    <text x="560" y="152" class="ds">タイミングで撮れる</text>
+    <text x="560" y="172">REC でもう一度止める</text>
+  </g>
+  <g class="card">
+    <rect x="10" y="220" width="220" height="170" rx="8"/>
+    <text x="26" y="250" class="dn">4</text><text x="52" y="250" class="dh">見直す</text>
+    <text x="26" y="282" class="tag">Blender</text><text x="80" y="282">テイクを再生</text>
+    <text x="80" y="302" class="ds">実写とカメラの動き</text>
+    <text x="80" y="324">CG・ライトを直す</text>
+    <text x="80" y="346">背景のオフセット</text>
+    <text x="80" y="366" class="ds">人を置く場所をずらす</text>
+  </g>
+  <g class="card">
+    <rect x="250" y="220" width="220" height="170" rx="8"/>
+    <text x="266" y="250" class="dn">5</text><text x="292" y="250" class="dh">書き出す</text>
+    <text x="266" y="282" class="tag">Blender</text><text x="320" y="282">書き出し</text>
+    <text x="320" y="302" class="ds">カメラ視点の動画</text>
+    <text x="320" y="324" class="mono-s">render.mp4</text>
+    <text x="320" y="356" class="ds">範囲で一部だけも</text>
+  </g>
+  <g class="card">
+    <rect x="490" y="220" width="220" height="170" rx="8"/>
+    <text x="506" y="250" class="dn">6</text><text x="532" y="250" class="dh">生成用の素材</text>
+    <text x="506" y="282" class="tag">Blender</text><text x="560" y="282">生成用の素材を</text>
+    <text x="560" y="302">書き出す</text>
+    <text x="560" y="324" class="mono-s" style="font-size:11.5px">for_generation/</text>
+    <text x="560" y="350" class="ds">参照を入れられる</text>
+    <text x="560" y="368" class="ds">動画生成モデルへ</text>
+  </g>
+  <!-- つなぎの矢印 -->
+  <line x1="232" y1="95" x2="248" y2="95" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="472" y1="95" x2="488" y2="95" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <path d="M600 182 L600 200 L120 200 L120 218" fill="none" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="232" y1="305" x2="248" y2="305" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="472" y1="305" x2="488" y2="305" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+</svg>
+</figure>
 
 <h3>1. 用意するもの</h3>
 <ul>

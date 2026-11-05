@@ -197,7 +197,7 @@ GET  http://127.0.0.1:9310/state     state の短縮
 ## 4. iPhone から出るデータ (OSC・NDI・UDP)
 
 Blender を使わずに、TouchDesigner や自作のツールで直接受けるときの形です。送り先は iPhone の設定画面の
-`PC IP Address` / `Port` (OSC、既定 8000) と `Server IP Address` / `Port` (HTTP、既定 8081) です。
+`PC IP Address` / `Port` (OSC、既定 8000) です (深度の UDP も同じ PC の 9100 番へ)。
 
 ### 座標系
 

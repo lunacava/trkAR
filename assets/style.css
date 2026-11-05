@@ -45,3 +45,11 @@ pre { overflow-x: auto; }
 .diagram .tag { fill: var(--ok); font-size: 11px; }
 .diagram .mono-s { fill: var(--accent); font-size: 13px; font-family: "OCR A", ui-monospace, monospace; }
 .diagram .card rect { fill: var(--panel); stroke: var(--frame); stroke-width: 1.2; }
+.diagram .ui text, .diagram text.u { fill: var(--accent); font-size: 11px; font-family: "OCR A", ui-monospace, monospace; }
+.diagram .ui .s { fill: var(--ok); }
+.diagram text.w { fill: var(--warn); font-size: 11px; font-family: "OCR A", ui-monospace, monospace; }
+.diagram text.r { fill: #ff5a5f; font-size: 11px; font-family: "OCR A", ui-monospace, monospace; }
+.diagram .rail rect { fill: #18163a; stroke: var(--frame); }
+.diagram .rail text { fill: var(--accent); font-size: 11px; text-anchor: middle; font-family: "OCR A", ui-monospace, monospace; }
+.diagram text.cross { fill: #ffffff; font-size: 30px; opacity: 0.75; }
+.diagram .note text { fill: var(--ok); font-size: 12px; }

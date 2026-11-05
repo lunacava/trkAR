@@ -14,6 +14,7 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 - `index.html` — about
 - `start.html` — getting started (app → add-on → record → export)
+- `app.html` — app guide (screen, buttons, settings, troubleshooting)
 - `generation.html` — files for reference-based video generation models (`for_generation/`)
 - `support.html` — support (App Store Connect: Support URL)
 - `privacy.html` — privacy policy (App Store Connect: Privacy Policy URL)

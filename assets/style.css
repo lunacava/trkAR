@@ -53,3 +53,4 @@ pre { overflow-x: auto; }
 .diagram .rail text { fill: var(--accent); font-size: 11px; text-anchor: middle; font-family: "OCR A", ui-monospace, monospace; }
 .diagram text.cross { fill: #ffffff; font-size: 30px; opacity: 0.75; }
 .diagram .note text { fill: var(--ok); font-size: 12px; }
+.compare td:first-child { white-space: nowrap; color: var(--frame); }

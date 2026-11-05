@@ -46,7 +46,7 @@
 
 <h3>うまく作るこつ</h3>
 <ul>
-  <li><b>人の輪郭線には人物のマスクが要ります</b>。録るときに iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク) を入れてください。マスクの無いテイクでは、背景の粘土だけの参照の動画になります</li>
+  <li><b>人の輪郭線には人物のマスクが要ります</b>。録るときに iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク)、または PC の AI の切り抜き (<span class="mono">RVM で切り抜く</span>、<a href="start.html">はじめかた</a> の「人の切り抜き」) を使ってください。RVM のほうが人の外形が細かく出ます。マスクの無いテイクでは、背景の粘土だけの参照の動画になります</li>
   <li><b>fps をそろえる</b>: 参照の動画はテイクの fps のまま書き出します (既定の収録は 24fps)。モデルが別の fps を前提にしていると速さが変わるので、モデルに合う fps で録ってください</li>
   <li><b>縦横比</b>は Blender のシーンの出力のままです。モデルが決まった比率しか受けないときは、シーンの出力の解像度を先に合わせます</li>
   <li><b>人の写真を外のサービスに送る</b>ときは、写っている人の同意を取ってください</li>
@@ -63,7 +63,7 @@
   <li><span class="mono">prompt.txt</span> — a prompt template that refers to the files above; add your shot description at the end</li>
   <li><span class="mono">first_frame.png</span> (first frame of the plate), <span class="mono">camera.json</span> (camera per frame), <span class="mono">manifest.json</span> (what each file is and how to map it)</li>
 </ul>
-<p>Tips: the actor outline needs a person mask (turn on <span class="mono">MASK</span> or <span class="mono">DPT</span> on the iPhone while recording); the video keeps the take's frame rate, so record at the rate your model expects; trim with the range to the model's length limit; get consent before sending someone's photo to an external service.</p>
+<p>Tips: the actor outline needs a person mask (turn on <span class="mono">MASK</span> or <span class="mono">DPT</span> on the iPhone, or use the AI cut-out <span class="mono">RVM で切り抜く</span> on the PC, while recording); the video keeps the take's frame rate, so record at the rate your model expects; trim with the range to the model's length limit; get consent before sending someone's photo to an external service.</p>
 </section>
 <footer>
 <p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。<br>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>

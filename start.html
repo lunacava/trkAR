@@ -166,9 +166,21 @@
 <ol>
   <li>3D ビューで <span class="mono">N</span> キーを押してサイドバーを出し、<span class="mono">trkAR</span> タブを開きます</li>
   <li>Blender でカメラを撮りたい場所に置き、<span class="mono">trkAR 受信</span> の ▶ を押します。テンキー <span class="mono">0</span> (カメラ視点) にして iPhone を動かすと、カメラが同じように動きます</li>
-  <li>実写も使うときは、iPhone の <span class="mono">CAM</span> を入れ、<span class="mono">trkAR 受信</span> で実写 (NDI) のソースに <span class="mono">&lt;iPhone の名前&gt; (trkAR)</span> を選びます。人だけを残すなら iPhone の <span class="mono">MASK</span> も入れます</li>
+  <li>実写も使うときは、iPhone の <span class="mono">CAM</span> を入れ、<span class="mono">trkAR 受信</span> で実写 (NDI) のソースに <span class="mono">&lt;iPhone の名前&gt; (trkAR)</span> を選びます。人だけを残すなら iPhone の <span class="mono">MASK</span> も入れます (細かく抜くなら下の「人の切り抜き」の RVM)</li>
   <li>iPhone で CG を見ながら撮るときは、<span class="mono">NDI 送出</span> でカメラ視点を送り、iPhone の <span class="mono">MONI</span> で <span class="mono">&lt;PC の名前&gt; (Blender (trkAR))</span> を選びます</li>
 </ol>
+
+<h3>人の切り抜き (2 通り)</h3>
+<p>実写の人だけを CG の中に立たせるには、人の形の切り抜き (アルファ) が要ります。作り方は 2 通りあり、どちらでも同じように使えます。</p>
+<table class="compare">
+  <tr><th></th><th>iPhone の人物マスク</th><th>PC の AI (RVM)</th></tr>
+  <tr><td>使い方</td><td>iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク)</td><td>Blender の <span class="mono">trkAR 受信</span> の実写の段の <span class="mono">RVM で切り抜く</span></td></tr>
+  <tr><td>細かさ</td><td>粗め (ARKit の人物マスク、256×192 ほど)</td><td>細かい。髪の毛まで半透明に抜ける</td></tr>
+  <tr><td>準備</td><td>要らない</td><td>PC に中継 (<a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte</a>) を入れる。Python と RVM のモデルを落とす</td></tr>
+  <tr><td>PC</td><td>何でもよい</td><td>Mac は Apple シリコン (Core ML)、Windows / Linux は GPU (NVIDIA の CUDA か DirectML)。GPU が弱いと遅く、リアルタイムに向きません</td></tr>
+  <tr><td>遅れ</td><td>ほぼ無し</td><td>約 +50ms (Mac mini M4 で 30fps のまま)</td></tr>
+</table>
+<p>RVM の中継は、このリポジトリを手元に取り (<span class="mono">git clone https://github.com/lunacava/trkAR.git</span> か、GitHub の Code &gt; Download ZIP)、<a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte の README</a> の手順で準備します。そのあと Blender の <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; trkAR Camera</span> の <span class="mono">RVM 中継のフォルダ</span> に、手元の <span class="mono">tools/matte</span> を指定します。<span class="mono">受信開始で切り抜きも始める</span> を入れておくと、<span class="mono">trkAR 受信</span> の ▶ で一緒に始まります。</p>
 
 <h3>5. 録って書き出す</h3>
 <ol>
@@ -196,7 +208,7 @@
   <li><b>You need</b> an ARKit iPhone / iPad (iOS 16+, LiDAR for depth), a Mac or Windows PC with Blender 4.2+ (5.1+ recommended), <a href="https://ndi.video/tools/">NDI Tools</a>, and both on the same network (wired is the most stable)</li>
   <li><b>App</b>: install trkAR Cam from the App Store and allow camera, local network and microphone. Look around until <span class="mono">WLDtrk</span> shows <span class="mono">Mapped</span>. The floor is set automatically once found; otherwise aim the center crosshair at the floor and tap <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span>. In <span class="mono">✱</span> Settings, enter your PC's IP and port <span class="mono">8000</span></li>
   <li><b>Add-on</b>: get <span class="mono">trkar_camera-&lt;version&gt;.zip</span> from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and drop it on Blender. On macOS, turn on Blender in System Settings &gt; Privacy &amp; Security &gt; Local Network and restart Blender. Try the <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">sample scenes</a></li>
-  <li><b>Connect</b>: in the 3D view press <span class="mono">N</span>, open the <span class="mono">trkAR</span> tab, place the camera and press ▶ on <span class="mono">trkAR 受信</span> (receive). Turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone&gt; (trkAR)</span> to bring in the live video; send the camera view with <span class="mono">NDI 送出</span> and watch it on the iPhone with <span class="mono">MONI</span></li>
+  <li><b>Connect</b>: in the 3D view press <span class="mono">N</span>, open the <span class="mono">trkAR</span> tab, place the camera and press ▶ on <span class="mono">trkAR 受信</span> (receive). Turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone&gt; (trkAR)</span> to bring in the live video. To keep only the person, use the iPhone's <span class="mono">MASK</span> / <span class="mono">DPT</span> (coarse, no setup) or the AI cut-out on the PC (<span class="mono">RVM で切り抜く</span>, hair-level detail; set up <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte</a>, Apple silicon or a GPU); send the camera view with <span class="mono">NDI 送出</span> and watch it on the iPhone with <span class="mono">MONI</span></li>
   <li><b>Record and export</b>: <span class="mono">REC</span> records the camera move, video and depth while the timeline plays; <span class="mono">テイクを再生</span> plays a take back; <span class="mono">書き出し</span> exports <span class="mono">render.mp4</span>; <span class="mono">生成用の素材を書き出す</span> writes the files for video generation models — see <a href="generation.html">Generation</a></li>
 </ol>
 <p>Trouble? Check that the panel's packet counter goes up (Blender's local network permission, the PC IP and port on the iPhone), that the floor is set on the iPhone, and use wired networking if the video stutters. More on <a href="support.html">Support</a>.</p>

@@ -30,7 +30,8 @@ from bpy.props import (
 )
 from mathutils import Matrix, Vector
 
-from . import (bridge, depth_input, hooks, legacy, ndi_input, os_screen, osc, perf, prep, screen_output, take, tracking,
+from . import (bridge, depth_input, hooks, legacy, matte, ndi_input, os_screen, osc, perf, prep, screen_output, take,
+               tracking,
                view_controller)
 
 STUDIO = False
@@ -48,6 +49,8 @@ depth_in = DepthInput()
 depth_in.video = ndi_in
 tracking.video = ndi_in
 tracking.depth = depth_in
+# RVM の切り抜きの中継 (別プロセスの tools/matte/trkar_matte.py)
+matte_relay = matte.MatteRelay()
 recorder = take.Recorder(ndi_in, depth_in)
 player = take.Player(ndi_in, depth_in)
 
@@ -115,6 +118,13 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
                     "3D ビューのサイドバー (N キー) の trkAR タブにも出す",
         update=lambda self, _context: _sync_sidebar(self.show_sidebar))
 
+    matte_folder: StringProperty(
+        name="RVM 中継のフォルダ",
+        description="AI で人を切り抜く中継 (tools/matte の trkar_matte.py と .venv のあるフォルダ)。"
+                    "空ならアドオンの近くを探す",
+        subtype="DIR_PATH",
+    )
+
 
     # --- 撮影の来歴 (take.json の slate / environment / people)。.blend ごとではなくこの PC の設定に持つ
     # (撮影中に背景の .blend を開き替えても、スレートの番号が続くように) ---
@@ -150,6 +160,7 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
     def draw(self, _context):
         self.layout.prop(self, "ndi_library_path")
         self.layout.prop(self, "show_sidebar")
+        self.layout.prop(self, "matte_folder")
         box = self.layout.box()
         box.label(text="撮影の来歴 (take.json)", icon="FILE_MOVIE")
         _draw_slate_settings(box, self)
@@ -313,6 +324,15 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
         name="ピントの追従", default=0.5, min=0.0, soft_max=3.0, subtype="TIME_ABSOLUTE", unit="TIME_ABSOLUTE",
         description="ピントが板の距離に追いつくまでのおよその時間 (秒)。人の距離の細かな揺れでピントが前後に"
                     "暴れないようにならす。0 で板の距離にそのまま合わせる")
+    matte_model: EnumProperty(
+        name="RVM モデル",
+        items=(("720", "720 (速い)", "Apple M4 で約 17ms"), ("1080", "1080 (細かい)", "Apple M4 で約 25ms")),
+        default="720",
+    )
+    # 公開版は中継を入れていない人が多いので既定はオフ (入れていないと受信のたびに警告が出る)
+    receive_matte: BoolProperty(
+        name="受信開始で切り抜きも始める", default=STUDIO,
+        description="trkAR 受信の ▶ で実写を受けるとき、RVM の切り抜きも始めて、切り抜いた映像 (trkAR Matte) を受ける")
     ndi_in_low: BoolProperty(name="低解像度で受ける", default=False,
                              description="NDI のプレビュー用ストリームを受ける (軽いが解像度が下がる)")
 
@@ -673,6 +693,8 @@ class TRKAR_OT_receive_start(bpy.types.Operator):
     def execute(self, context):
         settings = context.scene.trkar
         video = bpy.ops.trkar.ndi_in_start
+        if settings.receive_matte and not matte_relay.running:
+            video = lambda: _start_video_with_matte(self, context)
         steps = [(not tracking.server.running, bpy.ops.trkar.tracking_start)]
         steps.append((settings.receive_video and settings.ndi_in_source and not ndi_in.running, video))
         steps.append((settings.receive_depth and not depth_in.running, bpy.ops.trkar.depth_start))
@@ -685,6 +707,21 @@ class TRKAR_OT_receive_start(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _start_video_with_matte(operator, context):
+    """実写を RVM の切り抜き付きで受け始める。切り抜きの映像が選ばれていて切り抜きが動いていなければ、元のソースに
+    戻してから切り抜く。別に動いている中継 (見えている trkAR Matte) が選ばれていれば、それをそのまま受ける"""
+    source = _resolve_video_source(operator, context)
+    if source is None:
+        return
+    if source.endswith(MATTE_SOURCE_SUFFIX):
+        bpy.ops.trkar.ndi_in_start()
+        return
+    try:
+        bpy.ops.trkar.matte_start()
+    except RuntimeError as exc:
+        # 切り抜きを始められなくても (中継のフォルダが無いなど)、実写はそのまま受ける
+        operator.report({"WARNING"}, "切り抜きを始められないので、切り抜かずに受けます: %s" % exc)
+        bpy.ops.trkar.ndi_in_start()
 
 
 class TRKAR_OT_receive_stop(bpy.types.Operator):
@@ -693,6 +730,8 @@ class TRKAR_OT_receive_stop(bpy.types.Operator):
     bl_description = "カメラ追従・実写・深度・切り抜きの受信をまとめて止める"
 
     def execute(self, context):
+        if matte_relay.running or bpy.app.timers.is_registered(_switch_to_matte):
+            _stop_matte(context)  # 中継を止め、ソースを切り抜く前に戻す
         for running, operator in ((depth_in.running, bpy.ops.trkar.depth_stop),
                                   (ndi_in.running, bpy.ops.trkar.ndi_in_stop),
                                   (tracking.server.running, bpy.ops.trkar.tracking_stop)):
@@ -795,7 +834,7 @@ MATTE_SOURCE_SUFFIX = "(trkAR Matte)"
 
 
 def _matte_running():
-    return False
+    return matte_relay.running
 
 
 def _resolve_video_source(operator, context):
@@ -858,6 +897,110 @@ class TRKAR_OT_ndi_in_stop(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _matte_folder(context):
+    addon = context.preferences.addons.get(__package__)
+    configured = bpy.path.abspath(addon.preferences.matte_folder) if addon else ""
+    return matte.find_folder(configured)
+
+
+def _find_matte_source(context):
+    try:
+        names = ndi_in.sources(_library_override(context))
+    except Exception:
+        return None
+    return next((n for n in names if n.endswith("(%s)" % matte.OUTPUT_NAME)), None)
+
+
+def _switch_to_matte():
+    """中継の NDI が見えたら、Blender の NDI 受信をそちらに切り替える (モデルの読み込みに数秒かかる)"""
+    if not matte_relay.running:
+        return None
+    context = bpy.context
+    name = _find_matte_source(context)
+    if name is None:
+        return 0.5
+    settings = context.scene.trkar
+    settings.ndi_in_source = name
+    try:
+        ndi_in.start(name, settings.ndi_in_low, _library_override(context))
+    except Exception as exc:
+        matte_relay.last_error = str(exc)
+    return None
+
+
+class TRKAR_OT_matte_start(bpy.types.Operator):
+    bl_idname = "trkar.matte_start"
+    bl_label = "RVM で切り抜く"
+    bl_description = ("選んでいる NDI ソースを、この PC の RVM (Robust Video Matting、AI の人物の切り抜き) で切り抜き、"
+                      "アルファ付きの \"%s\" に切り替えて受ける (遅延 約 +50ms)") % getattr(matte, "OUTPUT_NAME", "")
+
+    def execute(self, context):
+        settings = context.scene.trkar
+        source = settings.ndi_in_source
+        if not source:
+            self.report({"ERROR"}, "先に NDI ソース (iPhone の trkAR) を選んでください")
+            return {"CANCELLED"}
+        if source.endswith("(%s)" % matte.OUTPUT_NAME):
+            self.report({"ERROR"}, "切り抜き済みの映像が選ばれています。元の iPhone のソースを選んでください")
+            return {"CANCELLED"}
+        settings.ndi_in_camera_source = source  # 切り抜きが動いていないのに切り抜きの映像が残ったら、ここへ戻す
+        just_stopped = time.monotonic() - matte_relay.stopped_at < 10.0
+        existing = None if just_stopped else _find_matte_source(context)
+        if existing is not None:
+            # ターミナルなどで trkar_matte.py がもう動いている (同じ名前では送り出せない)
+            ndi_in.stop()
+            settings.ndi_in_source = existing
+            try:
+                ndi_in.start(existing, settings.ndi_in_low, _library_override(context))
+            except Exception as exc:
+                self.report({"ERROR"}, str(exc))
+                return {"CANCELLED"}
+            self.report({"WARNING"}, "別に動いている中継 (%s) を受けます" % existing)
+            return {"FINISHED"}
+        folder = _matte_folder(context)
+        if folder is None:
+            self.report({"ERROR"}, "trkar_matte.py が見つかりません。アドオン設定の「RVM 中継のフォルダ」に tools/matte を指定")
+            return {"CANCELLED"}
+        matte_relay.previous_source = source
+        matte_relay.previous_running = ndi_in.running
+        try:
+            matte_relay.start(folder, source, settings.matte_model)
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        ndi_in.stop()
+        if bpy.app.timers.is_registered(_switch_to_matte):
+            bpy.app.timers.unregister(_switch_to_matte)
+        bpy.app.timers.register(_switch_to_matte, first_interval=1.0)
+        return {"FINISHED"}
+
+
+class TRKAR_OT_matte_stop(bpy.types.Operator):
+    bl_idname = "trkar.matte_stop"
+    bl_label = "切り抜きをやめる"
+    bl_description = "RVM の中継を止め、NDI 受信を元のソースに戻す"
+
+    def execute(self, context):
+        _stop_matte(context)
+        return {"FINISHED"}
+
+
+def _stop_matte(context):
+    if bpy.app.timers.is_registered(_switch_to_matte):
+        bpy.app.timers.unregister(_switch_to_matte)
+    matte_relay.stop()
+    matte_relay.last_error = ""
+    settings = context.scene.trkar
+    previous = matte_relay.previous_source or settings.ndi_in_camera_source
+    if previous and settings.ndi_in_source.endswith("(%s)" % matte.OUTPUT_NAME):
+        ndi_in.stop()
+        settings.ndi_in_source = previous
+        if matte_relay.previous_running:
+            try:
+                ndi_in.start(settings.ndi_in_source, settings.ndi_in_low, _library_override(context))
+            except Exception:
+                ndi_in.stop()
+    matte_relay.previous_source = ""
 
 
 def _image_aspect(image):
@@ -2529,7 +2672,7 @@ def _video_status():
     """実写 (NDI) の段の見出しの状態。"""
     status = ""
     if ndi_in.running:
-        status = "受信中"
+        status = "RVM" if matte_relay.running else "受信中"
     elif player.active:
         status = "テイク"
     return status
@@ -2566,6 +2709,25 @@ def _draw_ndi_in(layout, context):
                 layout.label(text="映像を待っています…", icon="TIME")
         if ndi_in.last_error:
             layout.label(text=ndi_in.last_error, icon="ERROR")
+    # RVM の切り抜き (別プロセスの中継 tools/matte。入れていなければ押したときに場所を聞く)
+    sub = layout.column(align=True)
+    if matte_relay.running:
+        sub.operator("trkar.matte_stop", icon="CANCEL")
+        status = matte_relay.status
+        if status.startswith("受信"):
+            # "受信 30 fps / 送出 30 fps / RVM 17 ms / 受信→送出 40 ms / ..." を 2 行に
+            parts = status.split(" / ")
+            sub.label(text=" / ".join(parts[:3]), icon="MOD_MASK")
+            sub.label(text=" / ".join(parts[3:]))
+        else:
+            sub.label(text=status or "RVM を起動中…", icon="TIME")
+    else:
+        row = sub.row(align=True)
+        row.operator("trkar.matte_start", icon="MOD_MASK")
+        row.prop(settings, "matte_model", text="")
+        sub.prop(settings, "receive_matte")
+        if matte_relay.last_error:
+            sub.label(text=matte_relay.last_error, icon="ERROR")
 
 
 class TRKAR_PT_ndi_in_screen(_TrkARSubPanel, bpy.types.Panel):
@@ -3082,7 +3244,7 @@ def _redraw_panels():
         depth_in.last_error = str(exc)
     # 受信件数などのステータス表示を更新する
     busy = (tracking.server.running or _ndi_out_running() or ndi_in.running or depth_in.running
-            or recorder.recording or _export["running"] or hooks.busy())
+            or recorder.recording or _export["running"] or hooks.busy() or matte_relay.running)
     if busy:
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
@@ -3193,6 +3355,8 @@ classes = (
     TRKAR_PT_take_bridge,
     TRKAR_PT_take_settings,
     TRKAR_PT_ndi_out,
+    TRKAR_OT_matte_start,
+    TRKAR_OT_matte_stop,
 )
 
 # 社内向け (STUDIO のときだけ登録する。親パネルより後ろに置く)
@@ -3275,6 +3439,9 @@ def unregister():
     screen_out.stop()
     os_screen_out.stop()
     depth_in.stop()
+    if bpy.app.timers.is_registered(_switch_to_matte):
+        bpy.app.timers.unregister(_switch_to_matte)
+    matte_relay.stop()
     bridge.stop()
     hooks.stop()
     ndi_in.close()

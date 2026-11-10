@@ -1,0 +1,23 @@
+<h2>Privacy Policy</h2>
+<p class="note">Last updated: October 23, 2026</p>
+<p>trkAR (“the app”) is an iOS / iPadOS app provided by lunacava (“the developer”).</p>
+<h3>Information we collect</h3>
+<p>The app does not collect any personal information or usage data. It does not send data to the developer or to any third-party server, and it does not use any advertising, analytics or tracking.</p>
+<h3>Camera, microphone and local network</h3>
+<ul>
+  <li><b>Camera</b>: used to track the camera position and orientation with AR, and to send video over NDI.</li>
+  <li><b>Microphone</b>: used to receive LTC timecode and to show external input levels.</li>
+  <li><b>Local network</b>: used to send camera pose, video, depth and similar data to the PC or server you set in Settings, and to discover NDI sources on the same network.</li>
+</ul>
+<p>This data stays on your device or goes only to the destinations you choose. Settings are stored on your device.</p>
+<h3 id="face-data-en"><span id="face-data"></span>Face data (TrueDepth camera)</h3>
+<p>When you choose the front camera in Settings, the app uses the TrueDepth camera through ARKit.</p>
+<ul>
+  <li><b>Information used</b>: the position and orientation of the device (front camera), the depth of the front camera image, and a person-segmentation mask (where a person is in the image). The app does not use face geometry (face mesh), facial expressions (blend shapes) or face-based identification, and does not create any face template or facial features data.</li>
+  <li><b>Purpose</b>: only for virtual production — to send the camera pose, the camera video with the person mask, and the depth in real time to the PC or server that you set in Settings (your own device on the same network). Depth is sent only when you turn on DPT, and the person mask only when you turn on MASK.</li>
+  <li><b>Storage and deletion</b>: this information is processed in memory one frame at a time and discarded immediately after it is sent. It is not stored on the device and not retained, so there is no stored data to delete.</li>
+  <li><b>Sharing</b>: it is not sent to the developer or to any third-party server, and it is never used for advertising, marketing, analytics or identifying users. It goes only to your own device; how it is handled there (for example, recording) is up to you.</li>
+  <li><b>How to stop</b>: switch to the back camera, turn off DPT, MASK and CAM, or revoke camera access in iOS Settings.</li>
+</ul>
+<h3>Contact</h3>
+<p>Please contact us via <a href="https://github.com/lunacava/trkAR/issues">GitHub Issues</a>. Any changes to this policy will be posted on this page.</p>

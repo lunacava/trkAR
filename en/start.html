@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Getting started</title>
+<meta name="description" content="Getting started with trkAR and the Blender add-on trkAR Camera">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/start.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/start.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/start.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><a href="../ja/start.html" hreflang="ja" lang="ja" data-lang="ja">JA</a> / <span aria-current="true">EN</span></div>
+</header>
+<nav><a href="index.html">Home</a><a href="start.html" aria-current="page">Start</a><a href="app.html">App</a><a href="generation.html">Generation</a><a href="integration.html">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>Getting started</h2>
+<p>How to drive a Blender camera with the camera move you shoot with trkAR on an iPhone or iPad, and record and export takes. The app's screen and buttons are explained in the <a href="app.html">App guide</a>.</p>
+<p class="note">The Blender add-on's labels are in Japanese. This page shows the Japanese label with its meaning, for example <span class="mono">trkAR 受信</span> (Receive).</p>
+<figure class="diagram">
+<svg viewBox="0 0 720 330" role="img" aria-labelledby="d1t">
+  <title id="d1t">What flows between trkAR on the iPhone and Blender on the PC</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#e9f6fc"/>
+    </marker>
+    <marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#ffd479"/>
+    </marker>
+  </defs>
+  <!-- iPhone -->
+  <rect x="10" y="20" width="200" height="270" rx="18" fill="#18163a" stroke="#899ac9" stroke-width="1.5"/>
+  <text x="110" y="52" text-anchor="middle" class="dh">iPhone / iPad</text>
+  <text x="110" y="72" text-anchor="middle" class="ds">trkAR app</text>
+  <g class="dl">
+    <text x="30" y="108">● Camera (ARKit)</text>
+    <text x="30" y="128" class="ds">measures pose and FOV</text>
+    <text x="30" y="162">● CAM / MASK</text>
+    <text x="30" y="182" class="ds">live video (person only)</text>
+    <text x="30" y="216">● MONI</text>
+    <text x="30" y="236" class="ds">shoot while watching CG</text>
+    <text x="30" y="270">● REC</text>
+  </g>
+  <!-- PC -->
+  <rect x="510" y="20" width="200" height="270" rx="10" fill="#18163a" stroke="#899ac9" stroke-width="1.5"/>
+  <text x="610" y="52" text-anchor="middle" class="dh">PC</text>
+  <text x="610" y="72" text-anchor="middle" class="ds">Blender + trkAR Camera</text>
+  <g class="dl">
+    <text x="530" y="108">● Camera follows</text>
+    <text x="530" y="128" class="ds">walk through the CG set</text>
+    <text x="530" y="162">● Live video screen</text>
+    <text x="530" y="182" class="ds">puts people in the CG</text>
+    <text x="530" y="216">● NDI out</text>
+    <text x="530" y="236" class="ds">sends the view back</text>
+    <text x="530" y="270">● Records takes</text>
+  </g>
+  <!-- 矢印 -->
+  <line x1="215" y1="104" x2="505" y2="104" stroke="#e9f6fc" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="360" y="96" text-anchor="middle" class="da">OSC: camera position, rotation, FOV (every frame)</text>
+  <line x1="215" y1="158" x2="505" y2="158" stroke="#e9f6fc" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="360" y="150" text-anchor="middle" class="da">NDI "&lt;iPhone&gt; (trkAR)": live video</text>
+  <line x1="505" y1="212" x2="215" y2="212" stroke="#ffd479" stroke-width="2" marker-end="url(#aw)"/>
+  <text x="360" y="204" text-anchor="middle" class="dw">NDI "Blender (trkAR)": CG camera view</text>
+  <line x1="215" y1="266" x2="505" y2="266" stroke="#e9f6fc" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#ar)"/>
+  <text x="360" y="258" text-anchor="middle" class="da">the iPhone's REC starts / stops recording</text>
+  <text x="360" y="318" text-anchor="middle" class="ds">Put the iPhone and the PC on the same network (wired is the most stable)</text>
+</svg>
+</figure>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 400" role="img" aria-labelledby="d2t">
+  <title id="d2t">Workflow: prepare, connect, shoot, review, export, files for generation</title>
+  <defs>
+    <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#899ac9"/>
+    </marker>
+  </defs>
+  <g class="card">
+    <rect x="10" y="10" width="220" height="170" rx="8"/>
+    <text x="26" y="40" class="dn">1</text><text x="52" y="40" class="dh">Prepare</text>
+    <text x="26" y="72" class="tag">iPhone</text><text x="80" y="72">set the floor</text>
+    <text x="80" y="92" class="ds">SET GND (aim at floor)</text>
+    <text x="80" y="114">enter the PC's IP</text>
+    <text x="26" y="146" class="tag">Blender</text><text x="80" y="146">open a scene</text>
+    <text x="80" y="166" class="ds">place the camera</text>
+  </g>
+  <g class="card">
+    <rect x="250" y="10" width="220" height="170" rx="8"/>
+    <text x="266" y="40" class="dn">2</text><text x="292" y="40" class="dh">Connect</text>
+    <text x="266" y="72" class="tag">Blender</text><text x="320" y="72">Receive ▶</text>
+    <text x="320" y="92" class="ds">camera follows iPhone</text>
+    <text x="266" y="124" class="tag">iPhone</text><text x="320" y="124">CAM (live video)</text>
+    <text x="320" y="146">MONI (watch the CG)</text>
+    <text x="320" y="166" class="ds">Blender: NDI out ▶</text>
+  </g>
+  <g class="card">
+    <rect x="490" y="10" width="220" height="170" rx="8"/>
+    <text x="506" y="40" class="dn">3</text><text x="532" y="40" class="dh">Shoot</text>
+    <text x="506" y="72" class="tag">Either</text><text x="560" y="72">REC</text>
+    <text x="560" y="92" class="ds">the timeline plays</text>
+    <text x="560" y="116">act and move</text>
+    <text x="560" y="136" class="ds">in sync with the</text>
+    <text x="560" y="152" class="ds">scene's animation</text>
+    <text x="560" y="172">REC again to stop</text>
+  </g>
+  <g class="card">
+    <rect x="10" y="220" width="220" height="170" rx="8"/>
+    <text x="26" y="250" class="dn">4</text><text x="52" y="250" class="dh">Review</text>
+    <text x="26" y="282" class="tag">Blender</text><text x="80" y="282">Play take</text>
+    <text x="80" y="302" class="ds">video and camera move</text>
+    <text x="80" y="324">fix CG and lights</text>
+    <text x="80" y="346">Background offset</text>
+    <text x="80" y="366" class="ds">move where people are</text>
+  </g>
+  <g class="card">
+    <rect x="250" y="220" width="220" height="170" rx="8"/>
+    <text x="266" y="250" class="dn">5</text><text x="292" y="250" class="dh">Export</text>
+    <text x="266" y="282" class="tag">Blender</text><text x="320" y="282">Export</text>
+    <text x="320" y="302" class="ds">camera-view video</text>
+    <text x="320" y="324" class="mono-s">render.mp4</text>
+    <text x="320" y="356" class="ds">or just a range</text>
+  </g>
+  <g class="card">
+    <rect x="490" y="220" width="220" height="170" rx="8"/>
+    <text x="506" y="250" class="dn">6</text><text x="532" y="250" class="dh">For generation</text>
+    <text x="506" y="282" class="tag">Blender</text><text x="560" y="282">Write files for</text>
+    <text x="560" y="302">generation</text>
+    <text x="560" y="324" class="mono-s" style="font-size:11.5px">for_generation/</text>
+    <text x="560" y="350" class="ds">to reference-based</text>
+    <text x="560" y="368" class="ds">video models</text>
+  </g>
+  <!-- つなぎの矢印 -->
+  <line x1="232" y1="95" x2="248" y2="95" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="472" y1="95" x2="488" y2="95" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <path d="M600 182 L600 200 L120 200 L120 218" fill="none" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="232" y1="305" x2="248" y2="305" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+  <line x1="472" y1="305" x2="488" y2="305" stroke="#899ac9" stroke-width="2" marker-end="url(#as)"/>
+</svg>
+</figure>
+
+<h3>1. What you need</h3>
+<ul>
+  <li>An iPhone / iPad with ARKit (iOS 16 or later). Depth comes from the back camera of models with LiDAR (Pro models)</li>
+  <li>A Mac or Windows PC with <a href="https://www.blender.org/">Blender</a> 4.2 or later (5.1+ recommended; sending the Blender screen over NDI needs 5.3+)</li>
+  <li><a href="https://ndi.video/tools/">NDI Tools</a> (free), for sending and receiving video</li>
+  <li>The iPhone and the PC on <b>the same network</b>. Wired Ethernet is the most stable; busy Wi-Fi makes video stutter</li>
+</ul>
+
+<h3>2. The app (iPhone / iPad)</h3>
+<ol>
+  <li>Install trkAR Cam (trkAR in the Japanese store) from the <a href="https://apps.apple.com/app/id6818742901">App Store</a> and allow camera, local network and microphone</li>
+  <li>Launch it in landscape and look around slowly. When <span class="mono">WLDtrk</span> at the top left shows <span class="mono">Mapped</span>, you are ready</li>
+  <li><b>Set the floor.</b> It is set automatically once the floor is found. If not, aim the center crosshair at the floor and tap <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span> (or <span class="mono">SET GND</span> in the top bar)</li>
+  <li>In <span class="mono">✱</span> (Settings), enter your PC's IP in <span class="mono">PC IP Address</span> and <span class="mono">8000</span> in <span class="mono">Port</span> (on a Mac: System Settings &gt; Network; on Windows: <span class="mono">ipconfig</span>)</li>
+</ol>
+
+<h3>3. The Blender add-on</h3>
+<ol>
+  <li>Download <span class="mono">trkar_camera-&lt;version&gt;.zip</span> from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and drag and drop it onto the Blender window (or <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; ▼ &gt; Install from Disk</span>)</li>
+  <li><b>On macOS, turn on Blender in System Settings &gt; Privacy &amp; Security &gt; Local Network</b>, then restart Blender (the most common stumbling block)</li>
+  <li>Try it with the <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">sample scenes</a> (subway platform, classroom)</li>
+</ol>
+
+<h3>4. Connect</h3>
+<ol>
+  <li>In the 3D view, press <span class="mono">N</span> to open the sidebar and open the <span class="mono">trkAR</span> tab</li>
+  <li>Place the Blender camera where you want to shoot and press ▶ on <span class="mono">trkAR 受信</span> (Receive). Switch to the camera view (numpad <span class="mono">0</span>) and move the iPhone: the camera moves the same way</li>
+  <li>To use the live video, turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone name&gt; (trkAR)</span> as the live video (NDI) source in <span class="mono">trkAR 受信</span>. To keep only the person, also turn on the iPhone's <span class="mono">MASK</span> (or use RVM, see "Cutting out people" below). If nothing shows the live video yet, a screen is placed in front of the camera when receiving starts (it stays transparent until video arrives, so it never hides the CG)</li>
+  <li>To shoot while watching the CG on the iPhone, send the camera view with <span class="mono">NDI 送出</span> (NDI out) and choose <span class="mono">&lt;PC name&gt; (Blender (trkAR))</span> with <span class="mono">MONI</span> on the iPhone</li>
+</ol>
+
+<h3>Cutting out people (two ways)</h3>
+<p>To put the person from the live video into the CG, you need a cut-out of the person (alpha). There are two ways to get it, and both work the same afterwards.</p>
+<table class="compare">
+  <tr><th></th><th>iPhone person mask</th><th>AI on the PC (RVM)</th></tr>
+  <tr><td>How</td><td>The iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask)</td><td><span class="mono">RVM で切り抜く</span> (Cut out with RVM) in the live video section of <span class="mono">trkAR 受信</span></td></tr>
+  <tr><td>Detail</td><td>Coarse (ARKit person mask, about 256×192)</td><td>Fine. Even hair is cut out with soft edges</td></tr>
+  <tr><td>Setup</td><td>None</td><td>Install the relay (<a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte</a>) on the PC, with Python and the RVM models</td></tr>
+  <tr><td>PC</td><td>Any</td><td>Mac: Apple silicon (Core ML). Windows / Linux: a GPU (NVIDIA CUDA or DirectML). A weak GPU is too slow for real time</td></tr>
+  <tr><td>Delay</td><td>Almost none</td><td>About +50 ms (30 fps on a Mac mini M4)</td></tr>
+</table>
+<p>To set up the RVM relay, get this repository (<span class="mono">git clone https://github.com/lunacava/trkAR.git</span>, or Code &gt; Download ZIP on GitHub) and follow <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">the tools/matte README</a>. Then set <span class="mono">RVM 中継のフォルダ</span> (RVM relay folder) in Blender's <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; trkAR Camera</span> to your local <span class="mono">tools/matte</span>. With <span class="mono">受信開始で切り抜きも始める</span> (start cut-out with Receive) on, it starts together with ▶ on <span class="mono">trkAR 受信</span>.</p>
+
+<h3>5. Record and export</h3>
+<ol>
+  <li><span class="mono">REC</span> in <span class="mono">録画・テイク</span> (Recording / Takes), or REC on the iPhone, records the camera move, live video and depth while the timeline plays. Press it again or stop playback to finish</li>
+  <li><span class="mono">テイクを再生</span> (Play take) plays a take back so you can fix the CG and lights. <span class="mono">ライブに戻る</span> (Back to live) returns to receiving</li>
+  <li><span class="mono">書き出し</span> (Export) writes the camera view to <span class="mono">render.mp4</span></li>
+  <li>To hand it to a video generation AI, <span class="mono">生成用の素材を書き出す</span> (Write files for generation) makes the intermediate files → <a href="generation.html">Files for video generation</a></li>
+</ol>
+<p>Takes are kept as <span class="mono">take_&lt;date&gt;_&lt;time&gt;/</span> in <span class="mono">trkar_takes/</span> next to the saved .blend.</p>
+
+<h3>Troubleshooting</h3>
+<table>
+  <tr><th>Problem</th><th>Check</th></tr>
+  <tr><td>The camera does not move</td><td>If the panel's packet counter (<span class="mono">受信 n 件 / UDP m</span>) stays at 0: Blender's local network permission, the PC IP Address and Port on the iPhone, and the same network. If <span class="mono">姿勢 ○ Hz</span> (pose rate) shows a number, poses are arriving</td></tr>
+  <tr><td>The CG floor and the real floor do not match</td><td>Is the floor set on the iPhone (the panel says <span class="mono">床が未設定</span>, floor not set, otherwise)? Aim the crosshair at the floor and SET GND again</td></tr>
+  <tr><td>No NDI sources</td><td>Is NDI Tools installed? Same network? Office and school Wi-Fi often blocks traffic between devices</td></tr>
+  <tr><td>Video stutters or lags</td><td>Use wired Ethernet for the iPhone / iPad and the PC. Set CAM Resolution and MONI Resolution to Low on the iPhone. Cool the iPhone if it shows HOT</td></tr>
+  <tr><td>The live video is gray or white</td><td>The 3D view is in Solid mode. Switch to Material Preview</td></tr>
+</table>
+<p>More on <a href="support.html">Support</a>. Which app and add-on versions work together is in <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md#5-アプリとアドオンの組み合わせ">INTEGRATION.md, section 5</a> (every combination works).</p>
+
+<footer>
+<p>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

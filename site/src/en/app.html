@@ -1,0 +1,148 @@
+<h2>App guide</h2>
+<p>trkAR measures the iPhone / iPad camera position and orientation with ARKit and sends it to your PC in real time. It can send the camera pose (OSC), the camera video (NDI), and depth / person masks (UDP / NDI), and it can show NDI video from the PC (such as the Blender CG) over the camera view. Without a PC, you can try AR with the demo scenes (<span class="mono">SCN</span>).</p>
+<p><a class="badge" href="https://apps.apple.com/app/id6818742901">Download on the App Store (trkAR Cam)</a></p>
+<p>Landscape only: hold the iPhone sideways. For the whole flow of shooting with Blender, see <a href="start.html">Getting started</a>.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 360" role="img" aria-labelledby="a1t">
+  <title id="a1t">Where things are on the trkAR screen</title>
+  <rect x="6" y="6" width="708" height="348" rx="34" fill="#0b0a1c" stroke="#899ac9" stroke-width="2"/>
+  <rect x="22" y="22" width="676" height="316" rx="20" fill="#13112e"/>
+  <!-- 上の列 -->
+  <rect x="22" y="22" width="676" height="34" fill="#18163a"/>
+  <g class="ui">
+    <text x="40" y="44">WLDtrk</text><text x="98" y="44">Rst</text><text x="130" y="44">ANC</text>
+    <text x="166" y="44" class="w">SET GND</text><text x="232" y="44">AF</text><text x="254" y="44">Dist 1.2m</text>
+    <text x="344" y="44">TC 01:02:03:04</text><text x="470" y="44">30</text><text x="494" y="44">AUX ▮▮▯</text>
+    <text x="560" y="44">Heat</text><text x="598" y="44">Batt</text>
+  </g>
+  <rect x="644" y="29" width="46" height="20" rx="2" fill="none" stroke="#ff5a5f"/><text x="667" y="44" text-anchor="middle" class="r">REC</text>
+  <!-- 右の数値と列 -->
+  <g class="ui">
+    <text x="510" y="80">tx ty tz</text><text x="510" y="98">rx ry rz</text><text x="510" y="116" class="s">OSC 60Hz</text>
+  </g>
+  <g class="rail">
+    <rect x="626" y="64" width="64" height="266" rx="2"/>
+    <text x="658" y="84">MONI</text><text x="658" y="112">CAM</text><text x="658" y="140">MASK</text><text x="658" y="168">DPT</text>
+    <text x="658" y="196">OSC</text><text x="658" y="224">GRID</text><text x="658" y="252">XYZ</text><text x="658" y="280">SCN</text><text x="658" y="310">✱</text>
+  </g>
+  <!-- 真ん中 -->
+  <text x="330" y="200" text-anchor="middle" class="cross">＋</text>
+  <rect x="180" y="222" width="300" height="24" rx="2" fill="none" stroke="#ffd479"/>
+  <text x="330" y="238" text-anchor="middle" class="w" style="font-size:10px">AIM AT THE FLOOR ▸ TAP TO SET GND</text>
+  <!-- 左下 -->
+  <rect x="40" y="298" width="46" height="26" rx="2" fill="none" stroke="#899ac9"/><text x="63" y="316" text-anchor="middle" class="u">CTL</text>
+  <rect x="94" y="298" width="46" height="26" rx="2" fill="none" stroke="#899ac9"/><text x="117" y="316" text-anchor="middle" class="u">POS</text>
+  <!-- 吹き出し -->
+  <g class="note">
+    <text x="40" y="78">① Top bar: status, origin, floor, focus, REC</text>
+    <text x="40" y="100">② Top right: pose being sent and the OSC rate</text>
+    <text x="40" y="122">③ Right column: send, watch, display, settings</text>
+    <text x="40" y="144">④ Center: crosshair (floor, distance, focus)</text>
+    <text x="40" y="166">⑤ Bottom left: controller (CTL), demo position (POS)</text>
+  </g>
+</svg>
+</figure>
+
+<h3>① Top bar</h3>
+<table>
+  <tr><th>Item</th><th>Meaning</th></tr>
+  <tr><td class="mono">WLDtrk</td><td>Tracking state. <span class="mono">Mapped</span> (green) below it is good; on <span class="mono">Limited</span> (yellow), look around slowly</td></tr>
+  <tr><td class="mono">Rst</td><td>Resets tracking and makes the current position the origin. To prevent mistakes, it runs when tapped twice within 2 seconds</td></tr>
+  <tr><td class="mono">ANC</td><td>Makes the current position and orientation the origin (anchor) and tells the PC</td></tr>
+  <tr><td class="mono">SET GND</td><td>Makes the floor under the crosshair height 0. While it is yellow, the floor is not set (it is set automatically once the floor is found)</td></tr>
+  <tr><td class="mono">AF</td><td>Focus. Tap to focus at the crosshair and lock; it shows the locked distance like <span class="mono">AF-L 2.4m</span>. Tap again for auto (see below)</td></tr>
+  <tr><td class="mono">Dist</td><td>Distance from the camera to the floor or surface under the crosshair</td></tr>
+  <tr><td class="mono">TC / FPS / AUX</td><td>Timecode (green when receiving LTC), its fps, and the microphone (LTC) input level</td></tr>
+  <tr><td>Heat / Battery</td><td>How hot the device is (OK → WARM → HOT → CRIT; from HOT, processing slows down) and the battery level</td></tr>
+  <tr><td class="mono">REC</td><td>Starts / stops recording in Blender (trkAR Camera). It counts down 3 seconds before starting; while recording, ● blinks and the screen edge turns red. Tap again to stop</td></tr>
+</table>
+
+<h3>② Numbers at the top right</h3>
+<p><span class="mono">tx ty tz</span> is the position (m) and <span class="mono">rx ry rz</span> the rotation (degrees) being sent to the PC. Once the floor is set, <span class="mono">ty</span> is the height above the floor. <span class="mono">OSC 60Hz</span> below them is the rate the pose is actually being sent (close to 60 on devices that run at 60 fps; a yellow 0 means nothing is being sent).</p>
+
+<h3>③ Right column</h3>
+<p>Tap to turn on (lit); tap again to turn off.</p>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td class="mono">MONI</td><td>Shows NDI video from the PC over the AR view (see below)</td></tr>
+  <tr><td class="mono">CAM</td><td>Sends the camera video over NDI (source name <span class="mono">&lt;device name&gt; (trkAR)</span>)</td></tr>
+  <tr><td class="mono">MASK</td><td>Adds the person's shape as transparency (alpha) to the CAM video, so the receiver can keep only the person. Available only while CAM is on. For a finer cut-out down to the hair, you can also use the AI cut-out on the PC (RVM; see "Cutting out people" in <a href="start.html">Getting started</a>)</td></tr>
+  <tr><td class="mono">DPT</td><td>Sends depth or a person mask (see below)</td></tr>
+  <tr><td class="mono">OSC</td><td>Each tap switches: numbers at the top right → OSC log → nothing</td></tr>
+  <tr><td class="mono">GRID / XYZ</td><td>Shows a grid on detected floor planes / the origin's axes</td></tr>
+  <tr><td class="mono">SCN</td><td>Demo display. Each tap switches: cube → floating shapes → T-Rex → animals → off</td></tr>
+  <tr><td class="mono">✱</td><td>Settings (see below)</td></tr>
+</table>
+
+<h3>④ Center and ⑤ bottom left</h3>
+<ul>
+  <li>The crosshair in the center is where the floor is set, distance is measured and focus is taken. While sending to the PC without a floor set, <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span> appears below it. Aim the crosshair at the floor and tap it to set the floor</li>
+  <li><span class="mono">CTL</span>: the virtual camera controller (see below). A small dot at its top right means an offset is still applied</li>
+  <li><span class="mono">POS</span>: a controller that moves the demo creature (only while a demo is shown with <span class="mono">SCN</span>)</li>
+  <li>Close a controller with the <span class="mono">×</span> at the top right of the center area</li>
+</ul>
+
+<h3>First use</h3>
+<ol>
+  <li>Allow camera, local network and microphone (without local network, nothing reaches the PC)</li>
+  <li>Look around slowly and wait for <span class="mono">WLDtrk</span> to show <span class="mono">Mapped</span></li>
+  <li>Set the floor (if it is not set automatically, aim the crosshair at the floor and tap <span class="mono">SET GND</span>)</li>
+  <li>In <span class="mono">✱</span>, enter <span class="mono">PC IP Address</span> and <span class="mono">Port</span> (8000 by default). OSC is sent from launch</li>
+</ol>
+<p>After moving to another place, or when the numbers jump, tap <span class="mono">Rst</span> twice to start over.</p>
+
+<h3>Connecting to a PC</h3>
+<ul>
+  <li><b>Camera pose</b>: <span class="mono">/client/current</span> is sent over OSC every frame. Receive it with <a href="start.html">trkAR Camera</a> in Blender, or an OSC In CHOP (matching port, Active on) in TouchDesigner. The format is in section 4 of <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a></li>
+  <li><b>Camera video (CAM)</b>: the NDI source <span class="mono">&lt;device name&gt; (trkAR)</span>. Quality is <span class="mono">CAM Resolution</span> in Settings (Low = 720p / High = about 1080p). Use Low if the device gets hot</li>
+  <li><b>Depth and person mask (DPT)</b>: sent to UDP port 9100 at <span class="mono">PC IP Address</span>. On devices with depth (LiDAR on the back, TrueDepth on the front), also sent as the NDI source <span class="mono">(trkAR-Depth)</span>. <span class="mono">DPT Data</span> in Settings chooses <span class="mono">Mask only</span> (person mask only, the default) or <span class="mono">Depth</span> (depth + person mask)</li>
+  <li><b>Watching the PC's video (MONI)</b>: choose a source (for example <span class="mono">Blender (trkAR)</span>) from <span class="mono">NDI Source ▾</span> at the top left. If it is not listed, tap <span class="mono">rescan</span>. While video arrives you see a green <span class="mono">LIVE</span> and the address it is connected to, and below it the reception stats (resolution, fps, dropped frames, longest stall)</li>
+</ul>
+
+<h3>Locking focus (AF)</h3>
+<p>With autofocus, focus shifts back and forth whenever the subject changes, and the field of view breathes a little each time (so the CG field of view on the PC wobbles too). Aim the crosshair at the subject you want and tap <span class="mono">AF</span> in the top bar to focus there and lock. The number in <span class="mono">AF-L 2.4m</span> is the distance when locked. Tap again to return to auto. <span class="mono">Focus Position</span> in Settings moves the locked focus by hand (0 = near to 1 = far; it has no unit).</p>
+
+<h3>Controller (CTL)</h3>
+<p>Adds what you move with the sticks to the real iPhone motion before sending (supported by the Blender add-on).</p>
+<table>
+  <tr><th>Control</th><th>Motion</th></tr>
+  <tr><td class="mono">MOVE / CRANE</td><td>Move forward, back, left, right / move up and down</td></tr>
+  <tr><td class="mono">PAN / TILT / ROLL</td><td>Turn sideways / turn up and down / tilt</td></tr>
+  <tr><td class="mono">S / M / F</td><td>Speed (slow / medium / fast)</td></tr>
+  <tr><td class="mono">LENS</td><td>The CG camera's focal length (<span class="mono">AR</span> = the real field of view), f-number and focus distance. <span class="mono">AF</span> focuses the CG camera automatically</td></tr>
+  <tr><td class="mono">ROT RST / ALL RST</td><td>Reset rotation only / reset both movement and rotation</td></tr>
+  <tr><td class="mono">TARGET</td><td>Controls another device's camera. When shooting with several devices, choose <span class="mono">CAM 2</span> and so on from the monitoring device to move that device's camera in Blender (give each device its own <span class="mono">Camera ID</span> in Settings)</td></tr>
+</table>
+<p>The sticks stop and return to the center when you let go.</p>
+
+<h3>Settings (✱)</h3>
+<table>
+  <tr><th>Item</th><th>What it does</th></tr>
+  <tr><td class="mono">Device ID</td><td>This device's name for identification (leave it empty to go back to the automatic value)</td></tr>
+  <tr><td class="mono">Camera ID</td><td>A number the receiver uses to tell cameras apart. Use a different one per device when shooting with several</td></tr>
+  <tr><td class="mono">PC IP Address / Port</td><td>Where OSC and depth are sent. When receiving NDI, sources announced at an unreachable address are also connected through this IP</td></tr>
+  <tr><td class="mono">LTC FPS / LTC Delay</td><td>The timecode fps (<span class="mono">Gen</span> uses the internal clock instead of LTC) and the LTC delay compensation (ms)</td></tr>
+  <tr><td class="mono">Camera</td><td><span class="mono">Back</span> / <span class="mono">Front</span>. Switching restarts tracking. Floor detection and distance are not available with the front camera</td></tr>
+  <tr><td class="mono">Front World</td><td>With the front camera, whether to track position too (<span class="mono">Off</span> tracks rotation only and updates depth faster)</td></tr>
+  <tr><td class="mono">Focus / Focus Position</td><td>Focus (<span class="mono">Auto</span> / <span class="mono">Lock</span>) and the locked position</td></tr>
+  <tr><td class="mono">Orientation</td><td><span class="mono">Landscape</span> (16:9) / <span class="mono">Portrait</span> (9:16; the sent video and pose become portrait, the screen stays landscape)</td></tr>
+  <tr><td class="mono">CAM / MONI Resolution</td><td>Quality of the sent / received video (Low is lighter)</td></tr>
+  <tr><td class="mono">MONI Alpha</td><td>Whether transparent parts of the received video show the AR view through</td></tr>
+  <tr><td class="mono">DPT Data</td><td><span class="mono">Mask only</span> / <span class="mono">Depth</span></td></tr>
+  <tr><td class="mono">Restart System</td><td>Re-initializes AR and all networking. Use it when changes such as the IP do not take effect</td></tr>
+  <tr><td class="mono">Credits</td><td>What the app uses (NDI®, fonts, 3D models) and links to Support, Privacy and Terms</td></tr>
+  <tr><td class="mono">Guide</td><td>Opens this page (from 1.1.4)</td></tr>
+</table>
+
+<h3>Troubleshooting</h3>
+<table>
+  <tr><th>Problem</th><th>Check</th></tr>
+  <tr><td>Nothing reaches the PC</td><td>Same network? Is Settings &gt; trkAR &gt; Local Network on for the iPhone? Are PC IP Address and Port right? If the <span class="mono">OSC</span> Hz at the top right is 0, tracking is lost (look around)</td></tr>
+  <tr><td>No NDI sources</td><td>Check the network and tap <span class="mono">rescan</span>. Office and school Wi-Fi often blocks traffic between devices</td></tr>
+  <tr><td>Video stutters or lags</td><td>In the stats under MONI, check that the address after <span class="mono">LIVE</span> is on the wired side (it may connect over Wi-Fi). Cool the device if it shows HOT. Set <span class="mono">CAM / MONI Resolution</span> to Low. Turn off CAM / DPT / MONI you do not use</td></tr>
+  <tr><td>Numbers jump or drift</td><td>Look around until <span class="mono">Mapped</span>. Dark places, plain white walls, and lots of mirrors or glass are hard. If it does not recover, tap <span class="mono">Rst</span> twice</td></tr>
+  <tr><td>The floor height is wrong</td><td>Aim the crosshair firmly at the floor and <span class="mono">SET GND</span> again</td></tr>
+  <tr><td>Focus shifts back and forth</td><td>Lock focus with <span class="mono">AF</span> in the top bar</td></tr>
+</table>
+<p>More on <a href="support.html">Support</a>.</p>

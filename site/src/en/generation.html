@@ -1,0 +1,35 @@
+<h2>Files for video generation</h2>
+<p>From a take recorded with trkAR, this makes the intermediate files to hand to <b>a video generation model that accepts references</b>. The idea: the camera move and where the person stands come from the take, and the look comes from generation.</p>
+<ul>
+  <li>The target is a video generation model that <b>takes videos and images as references (input) and is directed with a text prompt</b></li>
+  <li>trkAR does not generate anything itself. You choose which model or service to use (follow each service's pricing and terms of use)</li>
+</ul>
+
+<h3>How to make them</h3>
+<ol>
+  <li>In the Blender add-on <span class="mono">trkAR Camera</span> 0.10.21 or later, select a take (<a href="start.html">Getting started</a>)</li>
+  <li>Press <span class="mono">生成用の素材を書き出す</span> (Write files for generation) in <span class="mono">録画・テイク</span> (Recording / Takes). The number next to it is the long side of the reference video (960 by default); the camera icon turns the location layout on or off</li>
+  <li>If <span class="mono">範囲</span> (Range) is set, only that range is written. Match it to the model's length limit (often 5–10 seconds)</li>
+  <li><span class="mono">for_generation/</span> is created in the take's folder. Writing again keeps the previous one as <span class="mono">for_generation_&lt;date&gt;/</span></li>
+</ol>
+
+<h3>The files</h3>
+<table>
+  <tr><th>File</th><th>What it is</th><th>How to give it to the model</th></tr>
+  <tr><td class="mono">reference.mp4</td><td>The set rendered in one flat gray clay color with the take's camera move. The person is a white outline taken from the live video, filled black</td><td>Reference video (motion and framing reference, motion / structure control). <span class="mono">&lt;Video 1&gt;</span> in the prompt</td></tr>
+  <tr><td class="mono">layout.png</td><td>A 2×2 image looking forward (away from the camera), right, back (toward the camera) and left from where the person stands</td><td>Reference image (location). <span class="mono">&lt;Picture 1&gt;</span></td></tr>
+  <tr><td class="mono">actor.jpg</td><td>A frame from the take's live video where the person is large, sharp and well exposed, with everything outside the person grayed out</td><td>Reference image (person). <span class="mono">&lt;Picture 2&gt;</span></td></tr>
+  <tr><td class="mono">prompt.txt</td><td>A prompt template (in English) that points to the three files above. Add who, doing what, and the light and mood on the last line</td><td>Text instruction</td></tr>
+  <tr><td class="mono">first_frame.png</td><td>The live video's first frame of the range</td><td>First frame (the start image for image-to-video models)</td></tr>
+  <tr><td class="mono">camera.json</td><td>Camera position, rotation and field of view per frame (Blender world, Z up, meters)</td><td>For tools that take a camera path</td></tr>
+  <tr><td class="mono">manifest.json</td><td>What each file is, its size, fps and frame count, and the mapping above</td><td>For reading from scripts</td></tr>
+</table>
+<p>Models name references differently (<span class="mono">&lt;Video 1&gt;</span>, <span class="mono">@video1</span>, <span class="mono">[ref1]</span> and so on) and accept different numbers of references. Rewrite how the prompt points to them to match the model's documentation. If the model takes only one reference image, use <span class="mono">actor.jpg</span>.</p>
+
+<h3>Tips</h3>
+<ul>
+  <li><b>The person outline needs a person mask</b>. When recording, use the iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask), or the AI cut-out on the PC (<span class="mono">RVM で切り抜く</span>, Cut out with RVM; see "Cutting out people" in <a href="start.html">Getting started</a>). RVM gives a finer outline. Without a mask, the reference video shows only the clay set</li>
+  <li><b>Match the fps</b>: the reference video keeps the take's fps (recording is 24 fps by default). If the model assumes another fps, the speed changes, so record at a rate that suits the model</li>
+  <li><b>The aspect ratio</b> follows the Blender scene's output. If the model only accepts certain ratios, set the scene's output resolution first</li>
+  <li><b>Before sending a photo of a person to an external service</b>, get the consent of the person in it</li>
+</ul>

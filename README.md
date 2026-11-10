@@ -12,14 +12,16 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 ## Files
 
-- `index.html` — about
-- `start.html` — getting started (app → add-on → record → export)
-- `app.html` — app guide (screen, buttons, settings, troubleshooting)
-- `generation.html` — files for reference-based video generation models (`for_generation/`)
-- `support.html` — support (App Store Connect: Support URL)
-- `privacy.html` — privacy policy (App Store Connect: Privacy Policy URL)
-- `terms.html` — EULA: Apple Standard EULA + NDI® SDK terms (App Store Connect: custom License Agreement)
-- `integration.html` — how to connect trkAR to your own cloud / tools
+Website pages are built from `site/src/ja/*.html` and `site/src/en/*.html` (body only, same structure in both languages) with `python3 site/build.py`, which writes `ja/<page>.html` and `en/<page>.html`. Edit the sources, not the built pages. The root `<page>.html` files only send visitors to `ja/` or `en/` (the language chosen with the JA / EN switch, otherwise the browser language; English when unknown), so the URLs registered in App Store Connect and the app keep working.
+
+- `index` — about
+- `start` — getting started (app → add-on → record → export)
+- `app` — app guide (screen, buttons, settings, troubleshooting; opened from the app's Settings > Guide)
+- `generation` — files for reference-based video generation models (`for_generation/`)
+- `support` — support (App Store Connect: Support URL `support.html`)
+- `privacy` — privacy policy (App Store Connect: Privacy Policy URL `privacy.html`)
+- `terms` — EULA: Apple Standard EULA + NDI® SDK terms (App Store Connect: custom License Agreement; the English text is authoritative)
+- `integration` — how to connect trkAR to your own cloud / tools
 - `addon/` — trkAR Camera, public edition (GPL-3.0-or-later, see `addon/LICENSE`)
 - `tools/screen_ndi/` — source of the add-on's screen-capture NDI helper `addon/bin/trkar-screen-ndi` (GPL-3.0-or-later, build with `build.sh`)
 - `examples/` — hook examples (Apache-2.0)

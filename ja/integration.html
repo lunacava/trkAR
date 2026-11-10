@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — 連携</title>
+<meta name="description" content="trkAR を自分のクラウドやツールにつなぐ">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/integration.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/integration.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/integration.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><span aria-current="true">JA</span> / <a href="../en/integration.html" hreflang="en" lang="en" data-lang="en">EN</a></div>
+</header>
+<nav><a href="index.html">ホーム</a><a href="start.html">はじめかた</a><a href="app.html">アプリ</a><a href="generation.html">生成用の素材</a><a href="integration.html" aria-current="page">連携</a><a href="support.html">サポート</a><a href="privacy.html">プライバシー</a><a href="terms.html">規約</a></nav>
+
+<h2>連携 (自分のクラウドやツールにつなぐ)</h2>
+<p>trkAR は、撮ったテイクをどこにも送りません。S3・Google Drive・Frame.io・社内の NAS などへの連携は、Blender アドオン <span class="mono">trkAR Camera</span> の「テイクのあとに流すコマンド」で、自分で用意したスクリプトを動かしてつなぎます。</p>
+<ul>
+  <li><b>フック</b>: 録画を止めたとき・書き出したときに、設定したコマンドを流します。テイクの場所などを引数と環境変数で渡し、結果をパネルに表示します</li>
+  <li><b>テイクのフォルダ</b>: <span class="mono">take.json</span>・フレーム・深度・書き出した動画の形</li>
+  <li><b>通信ポート (自動化)</b>: 外のツールから、シーンを開く・テイクを選ぶ・書き出す、を 127.0.0.1 の HTTP で操作できます</li>
+  <li><b>iPhone から出るデータ</b>: OSC (カメラの位置・向き・タイムコード)、NDI® の映像と深度、無圧縮の深度 (UDP)</li>
+</ul>
+<p>仕様は <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a>、見本は <a href="https://github.com/lunacava/trkAR/blob/main/examples/s3_upload.py">examples/s3_upload.py</a> (テイクを Amazon S3 に上げる) です。</p>
+
+<h3>Claude などのコーディングエージェントで作る</h3>
+<p>このリポジトリを手元に取り、エージェントに「trkAR のテイクを自分の ○○ に上げるフックを作って」と頼んでください。リポジトリの <a href="https://github.com/lunacava/trkAR/blob/main/CLAUDE.md">CLAUDE.md</a> に、エージェント向けの手順と守ること (認証情報を書かない、など) を書いてあります。</p>
+<pre class="mono" style="white-space:pre-wrap;color:var(--accent)">git clone https://github.com/lunacava/trkAR.git
+cd trkAR
+claude   # 「テイクを自分の S3 の my-bucket に上げるフックを作って」</pre>
+
+<h3>Blender アドオンを入れる</h3>
+<p><a href="https://github.com/lunacava/trkAR/releases">Releases</a> から <span class="mono">trkar_camera-&lt;版&gt;.zip</span> (0.9.x までは <span class="mono">artrk_camera-…</span>) を落とし、Blender 4.2 以降で <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; ▼ &gt; ディスクからインストール</span> で入れます。NDI を使うには <a href="https://ndi.video/tools/">NDI Tools</a> などの NDI ランタイムが必要です。アドオンは GPL-3.0-or-later です。</p>
+
+<h3>ライセンスと、お願い</h3>
+<p>アドオンは GPL-3.0-or-later、見本のコードは Apache-2.0、仕様などの文書とサンプルのシーンは CC BY 4.0 です。<b>使ってくれたら、ひとこと連絡をもらえるとうれしいです</b> (ライセンスの条件ではなく、お願いです): <a href="https://github.com/lunacava/trkAR/issues/new?template=used-by.md">「使っています」の Issue</a></p>
+
+<footer>
+<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。</p>
+<p>© 2026 lunacava. NDI® は Vizrt NDI AB の登録商標です。trkAR は Vizrt NDI AB と提携しておらず、承認・後援も受けていません。</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

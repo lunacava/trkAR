@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — AR camera tracking for virtual production</title>
+<meta name="description" content="trkAR turns your iPhone or iPad into a camera tracker for virtual production">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/index.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/index.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/index.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><a href="../ja/index.html" hreflang="ja" lang="ja" data-lang="ja">JA</a> / <span aria-current="true">EN</span></div>
+</header>
+<nav><a href="index.html" aria-current="page">Home</a><a href="start.html">Start</a><a href="app.html">App</a><a href="generation.html">Generation</a><a href="integration.html">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<p>trkAR turns your iPhone or iPad into a camera tracker for virtual production. It streams the camera position and orientation from ARKit to your PC (TouchDesigner, Blender and more) over OSC in real time.</p>
+<ul>
+  <li>Camera pose over OSC</li>
+  <li>NDI® video output, and NDI input from your PC overlaid on the camera view</li>
+  <li>LTC timecode input, and start / stop recording on your PC with a countdown</li>
+  <li>Depth (LiDAR / TrueDepth) and person-mask output</li>
+  <li>Ground-plane calibration (automatic once the floor is found) and focus lock</li>
+  <li>Demo scenes (AR animals) you can try without a PC</li>
+</ul>
+<p><a class="badge" href="https://apps.apple.com/app/id6818742901">Download on the App Store (trkAR Cam)</a></p>
+<h2>Blender add-on</h2>
+<p>The Blender add-on <span class="mono">trkAR Camera</span> makes a Blender camera follow trkAR, brings in NDI video, and records and exports takes. It is on <a href="https://github.com/lunacava/trkAR/releases">Releases</a>. See <a href="start.html">Getting started</a> for how to use it, <a href="generation.html">Files for video generation</a> for making inputs for video generation AI, and <a href="integration.html">Integration</a> for connecting it to your own cloud or tools.</p>
+<h2>Sample scenes</h2>
+<p>Two Blender scenes to try with the add-on are on <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">Releases</a> (CC BY 4.0).</p>
+<p><img src="../assets/trkar_subway_platform.jpg" alt="Subway platform" style="width:100%;border:1px solid var(--frame)"><br>A subway platform near the last train (with moving commuters, trains and platform doors)</p>
+<p><img src="../assets/trkar_classroom.jpg" alt="Classroom" style="width:100%;border:1px solid var(--frame)"><br>A high school classroom (late afternoon sun before the end of school)</p>
+
+<footer>
+<p>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

@@ -17,8 +17,11 @@ h1, h2, h3, nav, .mono { font-family: "OCR A", ui-monospace, Menlo, monospace; c
 h1 { font-size: 34px; margin: 0; letter-spacing: 0.04em; }
 h2 { font-size: 20px; margin: 40px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--frame); }
 h3 { font-size: 16px; margin: 24px 0 4px; }
-nav { margin: 8px 0 24px; font-size: 14px; }
-nav a { margin-right: 18px; }
+nav { margin: 8px 0 24px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 2px 18px; }
+nav a { white-space: nowrap; }
+nav a[aria-current] { color: var(--accent); text-decoration: none; }
+.lang-switch { margin-left: auto; align-self: flex-start; font-family: "OCR A", ui-monospace, Menlo, monospace; font-size: 14px; color: var(--frame); white-space: nowrap; }
+.lang-switch span { color: var(--accent); }
 a { color: var(--ok); }
 .tagline { margin: 4px 0 0; color: var(--frame); }
 .lang { margin-top: 48px; padding-top: 8px; border-top: 1px dashed var(--frame); }

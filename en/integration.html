@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Integration</title>
+<meta name="description" content="Connect trkAR to your own cloud or tools">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/integration.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/integration.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/integration.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><a href="../ja/integration.html" hreflang="ja" lang="ja" data-lang="ja">JA</a> / <span aria-current="true">EN</span></div>
+</header>
+<nav><a href="index.html">Home</a><a href="start.html">Start</a><a href="app.html">App</a><a href="generation.html">Generation</a><a href="integration.html" aria-current="page">Integration</a><a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>Integration (connect to your own cloud or tools)</h2>
+<p>trkAR never uploads your takes anywhere. To connect to S3, Google Drive, Frame.io, a NAS at your studio and so on, use the <b>after-take command</b> in the Blender add-on <span class="mono">trkAR Camera</span> to run a script you provide.</p>
+<ul>
+  <li><b>Hook</b>: runs your command when a recording stops and when an export finishes. It passes the take location and more as arguments and environment variables, and shows the result in the panel</li>
+  <li><b>Take folder</b>: the layout of <span class="mono">take.json</span>, frames, depth and the exported video</li>
+  <li><b>Automation port</b>: external tools can open scenes, select takes and export over HTTP on 127.0.0.1</li>
+  <li><b>Data from the iPhone</b>: OSC (camera position, rotation, timecode), NDI® video and depth, uncompressed depth (UDP)</li>
+</ul>
+<p>The spec is <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a> (in Japanese), and the example is <a href="https://github.com/lunacava/trkAR/blob/main/examples/s3_upload.py">examples/s3_upload.py</a> (uploads a take to Amazon S3).</p>
+
+<h3>Build it with a coding agent such as Claude</h3>
+<p>Get this repository and ask the agent "make a hook that uploads trkAR takes to my ___". <a href="https://github.com/lunacava/trkAR/blob/main/CLAUDE.md">CLAUDE.md</a> in the repository tells the agent how to do it and what to follow (for example, never writing credentials into files).</p>
+<pre class="mono" style="white-space:pre-wrap;color:var(--accent)">git clone https://github.com/lunacava/trkAR.git
+cd trkAR
+claude   # "Make a hook that uploads takes to my S3 bucket my-bucket"</pre>
+
+<h3>Install the Blender add-on</h3>
+<p>Download <span class="mono">trkar_camera-&lt;version&gt;.zip</span> (<span class="mono">artrk_camera-…</span> up to 0.9.x) from <a href="https://github.com/lunacava/trkAR/releases">Releases</a> and install it in Blender 4.2 or later with <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; ▼ &gt; Install from Disk</span>. NDI needs an NDI runtime such as <a href="https://ndi.video/tools/">NDI Tools</a>. The add-on is GPL-3.0-or-later.</p>
+
+<h3>License, and a request</h3>
+<p>The add-on is GPL-3.0-or-later, the example code Apache-2.0, and the docs (such as the spec) and sample scenes CC BY 4.0. <b>If you use trkAR, I'd love to hear about it</b> (a request, not a license condition): <a href="https://github.com/lunacava/trkAR/issues/new?template=used-by.md">open a "Used by" issue</a></p>
+
+<footer>
+<p>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

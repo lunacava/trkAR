@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — Support</title>
+<meta name="description" content="trkAR support and FAQ">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/support.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/support.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/support.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><a href="../ja/support.html" hreflang="ja" lang="ja" data-lang="ja">JA</a> / <span aria-current="true">EN</span></div>
+</header>
+<nav><a href="index.html">Home</a><a href="start.html">Start</a><a href="app.html">App</a><a href="generation.html">Generation</a><a href="integration.html">Integration</a><a href="support.html" aria-current="page">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav>
+
+<h2>Support</h2>
+<p>Please report bugs or ask questions on <a href="https://github.com/lunacava/trkAR/issues">GitHub Issues</a>. It helps if you include your device model, iOS version and trkAR version (shown in Settings → About → Credits).</p>
+<h3>Requirements</h3>
+<ul>
+  <li>iPhone or iPad with ARKit support, iOS 16 or later</li>
+  <li>Depth output needs a LiDAR (back) or TrueDepth (front) camera</li>
+  <li>To work with a PC, connect the device and the PC to the same network</li>
+</ul>
+<h3>FAQ</h3>
+<p><b>No data arrives on my PC</b><br>Check that the PC IP Address and port in Settings (OSC default: 8000) match the receiver. trkAR needs Local Network access (iOS Settings → Privacy &amp; Security → Local Network).</p>
+<p><b>No NDI sources are listed</b><br>You need a PC sending NDI on the same network. Tap “rescan”. See <a href="https://ndi.video/">ndi.video</a> for more about NDI.</p>
+<p><b>Can I try it without a PC?</b><br>Yes — the demo scenes let you place AR animals on the floor.</p>
+
+<footer>
+<p>trkAR is a personal project by lunacava. It is not a product or service of, and does not represent the views of, any company or organization the author is affiliated with.</p>
+<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, endorsed or sponsored by Vizrt NDI AB.</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

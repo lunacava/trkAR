@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — バーチャルプロダクションの AR カメラトラッキング</title>
+<meta name="description" content="trkAR — iPhone / iPad をバーチャルプロダクション用のカメラトラッカーにするアプリ">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/index.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/index.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/index.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><span aria-current="true">JA</span> / <a href="../en/index.html" hreflang="en" lang="en" data-lang="en">EN</a></div>
+</header>
+<nav><a href="index.html" aria-current="page">ホーム</a><a href="start.html">はじめかた</a><a href="app.html">アプリ</a><a href="generation.html">生成用の素材</a><a href="integration.html">連携</a><a href="support.html">サポート</a><a href="privacy.html">プライバシー</a><a href="terms.html">規約</a></nav>
+
+<p>trkAR は、iPhone / iPad をバーチャルプロダクション用のカメラトラッカーにするアプリです。ARKit で求めたカメラの位置と向きを、OSC で PC (TouchDesigner、Blender など) へリアルタイムに送ります。</p>
+<ul>
+  <li>カメラの位置・向きを OSC で送信</li>
+  <li>カメラ映像の NDI® 送出と、PC からの NDI 映像の受信・重ね表示</li>
+  <li>LTC タイムコードの受信と、PC 側の収録の開始・停止 (カウントダウン付き)</li>
+  <li>深度 (LiDAR / TrueDepth) と人物マスクの送出</li>
+  <li>床の基準合わせ (床が見つかると自動)、ピントの固定</li>
+  <li>PC がなくても試せるデモシーン (動物の AR 表示)</li>
+</ul>
+<p><a class="badge" href="https://apps.apple.com/jp/app/trkar/id6818742901">App Store で入手 (trkAR)</a></p>
+<h2>Blender アドオン</h2>
+<p>Blender でカメラを trkAR に追従させ、NDI の映像を受け、テイクを録って書き出すアドオン <span class="mono">trkAR Camera</span> を <a href="https://github.com/lunacava/trkAR/releases">Releases</a> で配っています。使い方は <a href="start.html">はじめかた</a>、動画生成 AI に渡す素材の作り方は <a href="generation.html">生成用の素材</a>、自分のクラウドやツールへのつなぎ方は <a href="integration.html">連携</a> を見てください。</p>
+<h2>サンプルのシーン</h2>
+<p>アドオンで試せる Blender のシーンを 2 つ、<a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">Releases</a> で配っています (CC BY 4.0)。</p>
+<p><img src="../assets/trkar_subway_platform.jpg" alt="地下鉄ホーム" style="width:100%;border:1px solid var(--frame)"><br>終電間際の地下鉄ホーム (通勤客・電車・ホームドアの動きつき)</p>
+<p><img src="../assets/trkar_classroom.jpg" alt="教室" style="width:100%;border:1px solid var(--frame)"><br>高校の教室 (放課後前の西日)</p>
+
+<footer>
+<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。</p>
+<p>© 2026 lunacava. NDI® は Vizrt NDI AB の登録商標です。trkAR は Vizrt NDI AB と提携しておらず、承認・後援も受けていません。</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

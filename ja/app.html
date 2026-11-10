@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trkAR — アプリの使い方</title>
+<meta name="description" content="iPhone / iPad アプリ trkAR の画面と使い方">
+<link rel="alternate" hreflang="ja" href="https://lunacava.github.io/trkAR/ja/app.html">
+<link rel="alternate" hreflang="en" href="https://lunacava.github.io/trkAR/en/app.html">
+<link rel="alternate" hreflang="x-default" href="https://lunacava.github.io/trkAR/app.html">
+<link rel="icon" href="../assets/icon.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header>
+  <img src="../assets/icon.png" alt="trkAR icon">
+  <div><h1>trkAR</h1><p class="tagline">AR camera tracking for virtual production</p></div>
+  <div class="lang-switch"><span aria-current="true">JA</span> / <a href="../en/app.html" hreflang="en" lang="en" data-lang="en">EN</a></div>
+</header>
+<nav><a href="index.html">ホーム</a><a href="start.html">はじめかた</a><a href="app.html" aria-current="page">アプリ</a><a href="generation.html">生成用の素材</a><a href="integration.html">連携</a><a href="support.html">サポート</a><a href="privacy.html">プライバシー</a><a href="terms.html">規約</a></nav>
+
+<h2>アプリの使い方</h2>
+<p>trkAR は、iPhone / iPad の ARKit でカメラの位置と向きを測り、PC にリアルタイムで送るアプリです。カメラの姿勢 (OSC)、カメラの映像 (NDI)、深度・人物マスク (UDP / NDI) を送れ、PC から来る NDI の映像 (Blender の CG など) を重ねて見ることもできます。PC がなくても、デモ表示 (<span class="mono">SCN</span>) で AR を試せます。</p>
+<p><a class="badge" href="https://apps.apple.com/jp/app/trkar/id6818742901">App Store で入手 (trkAR)</a></p>
+<p>横向き専用です。iPhone を横に持って使います。Blender とつないで撮る全体の流れは <a href="start.html">はじめかた</a> を見てください。</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 720 360" role="img" aria-labelledby="a1t">
+  <title id="a1t">trkAR の画面のどこに何があるか</title>
+  <rect x="6" y="6" width="708" height="348" rx="34" fill="#0b0a1c" stroke="#899ac9" stroke-width="2"/>
+  <rect x="22" y="22" width="676" height="316" rx="20" fill="#13112e"/>
+  <!-- 上の列 -->
+  <rect x="22" y="22" width="676" height="34" fill="#18163a"/>
+  <g class="ui">
+    <text x="40" y="44">WLDtrk</text><text x="98" y="44">Rst</text><text x="130" y="44">ANC</text>
+    <text x="166" y="44" class="w">SET GND</text><text x="232" y="44">AF</text><text x="254" y="44">Dist 1.2m</text>
+    <text x="344" y="44">TC 01:02:03:04</text><text x="470" y="44">30</text><text x="494" y="44">AUX ▮▮▯</text>
+    <text x="560" y="44">温度</text><text x="598" y="44">電池</text>
+  </g>
+  <rect x="644" y="29" width="46" height="20" rx="2" fill="none" stroke="#ff5a5f"/><text x="667" y="44" text-anchor="middle" class="r">REC</text>
+  <!-- 右の数値と列 -->
+  <g class="ui">
+    <text x="510" y="80">tx ty tz</text><text x="510" y="98">rx ry rz</text><text x="510" y="116" class="s">OSC 60Hz</text>
+  </g>
+  <g class="rail">
+    <rect x="626" y="64" width="64" height="266" rx="2"/>
+    <text x="658" y="84">MONI</text><text x="658" y="112">CAM</text><text x="658" y="140">MASK</text><text x="658" y="168">DPT</text>
+    <text x="658" y="196">OSC</text><text x="658" y="224">GRID</text><text x="658" y="252">XYZ</text><text x="658" y="280">SCN</text><text x="658" y="310">✱</text>
+  </g>
+  <!-- 真ん中 -->
+  <text x="330" y="200" text-anchor="middle" class="cross">＋</text>
+  <rect x="180" y="222" width="300" height="24" rx="2" fill="none" stroke="#ffd479"/>
+  <text x="330" y="238" text-anchor="middle" class="w" style="font-size:10px">AIM AT THE FLOOR ▸ TAP TO SET GND</text>
+  <!-- 左下 -->
+  <rect x="40" y="298" width="46" height="26" rx="2" fill="none" stroke="#899ac9"/><text x="63" y="316" text-anchor="middle" class="u">CTL</text>
+  <rect x="94" y="298" width="46" height="26" rx="2" fill="none" stroke="#899ac9"/><text x="117" y="316" text-anchor="middle" class="u">POS</text>
+  <!-- 吹き出し -->
+  <g class="note">
+    <text x="40" y="78">① 上の列: 状態と、原点・床・ピント・REC</text>
+    <text x="40" y="100">② 右上: 送っている位置・向きと OSC の周期</text>
+    <text x="40" y="122">③ 右の列: 送る・見る・表示の切り替えと設定</text>
+    <text x="40" y="144">④ 真ん中: 十字 (床や距離を測る所)</text>
+    <text x="40" y="166">⑤ 左下: コントローラー (CTL) とデモの位置 (POS)</text>
+  </g>
+</svg>
+</figure>
+
+<h3>① 上の列</h3>
+<table>
+  <tr><th>表示</th><th>意味</th></tr>
+  <tr><td class="mono">WLDtrk</td><td>空間の認識の状態。下が <span class="mono">Mapped</span> (緑) なら良好、<span class="mono">Limited</span> (黄) なら周りをゆっくり見回します</td></tr>
+  <tr><td class="mono">Rst</td><td>トラッキングをリセットして、今の位置を原点にし直します。誤操作を防ぐため、2 秒以内に 2 回押すと実行します</td></tr>
+  <tr><td class="mono">ANC</td><td>今の位置と向きを原点 (アンカー) にして PC に知らせます</td></tr>
+  <tr><td class="mono">SET GND</td><td>十字の先の床を高さ 0 にします。黄色のうちは床が決まっていません (床が見つかると自動で決まります)</td></tr>
+  <tr><td class="mono">AF</td><td>ピント。押すと十字の所でピントを合わせて止め、<span class="mono">AF-L 2.4m</span> のように止めた距離を出します。もう一度でオート (後述)</td></tr>
+  <tr><td class="mono">Dist</td><td>十字から床や面までの距離</td></tr>
+  <tr><td class="mono">TC / FPS / AUX</td><td>タイムコード (LTC を受けていれば緑)、その fps、マイク入力 (LTC) のレベル</td></tr>
+  <tr><td>温度 / 電池</td><td>本体の熱さ (OK → WARM → HOT → CRIT。HOT から処理が遅くなります) と残量</td></tr>
+  <tr><td class="mono">REC</td><td>Blender (trkAR Camera) の録画の開始・停止。押すと 3 秒数えてから始まり、録画中は ● が点滅して画面のふちが赤くなります。もう一度押すと止まります</td></tr>
+</table>
+
+<h3>② 右上の数値</h3>
+<p><span class="mono">tx ty tz</span> は位置 (m)、<span class="mono">rx ry rz</span> は向き (度) で、PC に送っている値です。床が決まると <span class="mono">ty</span> は床からの高さになります。その下の <span class="mono">OSC 60Hz</span> は、姿勢を実際に送っている周期です (60fps で動く機種なら 60 近く。0 が黄色なら送れていません)。</p>
+
+<h3>③ 右の列</h3>
+<p>押すと点灯し、もう一度で消えます。</p>
+<table>
+  <tr><th>ボタン</th><th>機能</th></tr>
+  <tr><td class="mono">MONI</td><td>PC から来る NDI の映像を、AR の画面に重ねて見ます (後述)</td></tr>
+  <tr><td class="mono">CAM</td><td>カメラの映像を NDI で送ります (ソース名 <span class="mono">&lt;端末名&gt; (trkAR)</span>)</td></tr>
+  <tr><td class="mono">MASK</td><td>CAM の映像に、人物の形の透明度 (アルファ) を載せます。受け側で人だけを残せます。CAM がオンのときだけ押せます。髪の毛まで細かく抜きたいときは、PC の AI の切り抜き (RVM) も使えます (<a href="start.html">はじめかた</a> の「人の切り抜き」)</td></tr>
+  <tr><td class="mono">DPT</td><td>深度か人物マスクを送ります (後述)</td></tr>
+  <tr><td class="mono">OSC</td><td>押すたびに、右上の数値 → OSC のログ → 何も出さない、と切り替えます</td></tr>
+  <tr><td class="mono">GRID / XYZ</td><td>床に見つけた面のグリッド / 原点の座標軸を出します</td></tr>
+  <tr><td class="mono">SCN</td><td>デモ表示。押すたびに 立方体 → 浮かぶ形 → T-Rex → 動物たち → 消す、と切り替わります</td></tr>
+  <tr><td class="mono">✱</td><td>設定 (後述)</td></tr>
+</table>
+
+<h3>④ 真ん中・⑤ 左下</h3>
+<ul>
+  <li>真ん中の十字は、床を決める・距離を測る・ピントを合わせる所です。床が決まっていないまま PC に送っていると、その下に <span class="mono">AIM AT THE FLOOR ▸ TAP TO SET GND</span> が出ます。十字を床に向けて、これを押せば床が決まります</li>
+  <li><span class="mono">CTL</span>: バーチャルカメラのコントローラー (後述)。足した分が残っていると、右上に小さな点が付きます</li>
+  <li><span class="mono">POS</span>: デモの生き物を動かすコントローラー (<span class="mono">SCN</span> でデモを出しているときだけ)</li>
+  <li>コントローラーは、真ん中の表示の右上の <span class="mono">×</span> で閉じます</li>
+</ul>
+
+<h3>はじめての使い方</h3>
+<ol>
+  <li>カメラ・ローカルネットワーク・マイクを許可します (ローカルネットワークを許可しないと、PC に何も届きません)</li>
+  <li>周りをゆっくり見回し、<span class="mono">WLDtrk</span> が <span class="mono">Mapped</span> になるのを待ちます</li>
+  <li>床を決めます (自動で決まらなければ、十字を床に向けて <span class="mono">SET GND</span>)</li>
+  <li><span class="mono">✱</span> で <span class="mono">PC IP Address</span> と <span class="mono">Port</span> (既定 8000) を入れます。OSC は起動したときから送っています</li>
+</ol>
+<p>場所を変えたときや、数値が飛ぶときは、<span class="mono">Rst</span> を 2 回押してやり直します。</p>
+
+<h3>PC とつなぐ</h3>
+<ul>
+  <li><b>カメラの姿勢</b>: OSC で <span class="mono">/client/current</span> を毎フレーム送ります。Blender は <a href="start.html">trkAR Camera</a>、TouchDesigner は OSC In CHOP (ポートを合わせて Active) で受けます。形は <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md">INTEGRATION.md</a> の 4 章</li>
+  <li><b>カメラの映像 (CAM)</b>: NDI のソース <span class="mono">&lt;端末名&gt; (trkAR)</span>。画質は設定の <span class="mono">CAM Resolution</span> (Low = 720p / High = 1080p 前後)。熱くなりやすいときは Low に</li>
+  <li><b>深度・人物マスク (DPT)</b>: <span class="mono">PC IP Address</span> の UDP 9100 番へ送ります。深度が出る機種 (LiDAR の背面、TrueDepth の前面) では NDI のソース <span class="mono">(trkAR-Depth)</span> にも流します。中身は設定の <span class="mono">DPT Data</span> で <span class="mono">Mask only</span> (人物マスクだけ、既定) か <span class="mono">Depth</span> (深度 + 人物マスク)</li>
+  <li><b>PC の映像を見る (MONI)</b>: 左上の <span class="mono">NDI Source ▾</span> で見たいソース (例 <span class="mono">Blender (trkAR)</span>) を選びます。出てこなければ <span class="mono">rescan</span>。届いていれば緑の <span class="mono">LIVE</span> とつないでいる先のアドレス、その下に受信の様子 (解像度・fps・落ちたコマ・いちばん長く止まった時間) が出ます</li>
+</ul>
+
+<h3>ピントを止める (AF)</h3>
+<p>オートフォーカスのままだと、写るものが変わるたびにピントが前後し、そのたびに画角も少し伸び縮みします (PC の CG の画角も揺れます)。止めたい被写体に十字を向けて上の列の <span class="mono">AF</span> を押すと、そこでピントを合わせて止めます。<span class="mono">AF-L 2.4m</span> の数字は止めたときの距離です。もう一度押すとオートに戻ります。設定の <span class="mono">Focus Position</span> で、止める位置を手で動かすこともできます (0 = 近く 〜 1 = 遠く。単位はありません)。</p>
+
+<h3>コントローラー (CTL)</h3>
+<p>実際の iPhone の動きに、スティックで動かした分を足して送ります (Blender アドオンは対応しています)。</p>
+<table>
+  <tr><th>操作</th><th>動き</th></tr>
+  <tr><td class="mono">MOVE / CRANE</td><td>前後左右に移動 / 上下に移動</td></tr>
+  <tr><td class="mono">PAN / TILT / ROLL</td><td>横に振る / 縦に振る / 傾ける</td></tr>
+  <tr><td class="mono">S / M / F</td><td>動く速さ (遅い / 普通 / 速い)</td></tr>
+  <tr><td class="mono">LENS</td><td>CG のカメラの焦点距離 (<span class="mono">AR</span> = 実際の画角)、F 値、フォーカス距離。<span class="mono">AF</span> で CG のカメラのピントを自動で合わせます</td></tr>
+  <tr><td class="mono">ROT RST / ALL RST</td><td>回転だけ戻す / 移動も回転も戻す</td></tr>
+  <tr><td class="mono">TARGET</td><td>別の端末のカメラを操作します。複数台で撮るとき、モニター役の端末から <span class="mono">CAM 2</span> などを選ぶと、その端末のカメラを Blender の上で動かせます (端末ごとに設定の <span class="mono">Camera ID</span> を変えておきます)</td></tr>
+</table>
+<p>スティックは指を離すと止まり、中央に戻ります。</p>
+
+<h3>設定 (✱)</h3>
+<table>
+  <tr><th>項目</th><th>内容</th></tr>
+  <tr><td class="mono">Device ID</td><td>この端末の識別名 (空にすると自動の値に戻ります)</td></tr>
+  <tr><td class="mono">Camera ID</td><td>受け側がどのカメラかを見分ける番号。複数台で撮るときは端末ごとに変えます</td></tr>
+  <tr><td class="mono">PC IP Address / Port</td><td>OSC・深度の送り先。NDI を受けるとき、届かないアドレスで告知されたソースもこの IP でつなぎます</td></tr>
+  <tr><td class="mono">LTC FPS / LTC Delay</td><td>タイムコードの fps (<span class="mono">Gen</span> は LTC を使わず内部の時計) と、LTC の遅れの補正 (ms)</td></tr>
+  <tr><td class="mono">Camera</td><td><span class="mono">Back</span> (背面) / <span class="mono">Front</span> (前面)。切り替えるとトラッキングはやり直しです。前面では床の検出と距離が使えません</td></tr>
+  <tr><td class="mono">Front World</td><td>前面カメラのとき、位置も取るか (<span class="mono">Off</span> なら向きだけで、深度の更新が速くなります)</td></tr>
+  <tr><td class="mono">Focus / Focus Position</td><td>ピント (<span class="mono">Auto</span> / <span class="mono">Lock</span>) と、止める位置</td></tr>
+  <tr><td class="mono">Orientation</td><td><span class="mono">Landscape</span> (横 16:9) / <span class="mono">Portrait</span> (縦 9:16。送る映像と姿勢が縦向きに。画面は横のまま)</td></tr>
+  <tr><td class="mono">CAM / MONI Resolution</td><td>送る / 受ける映像の画質 (Low が軽い)</td></tr>
+  <tr><td class="mono">MONI Alpha</td><td>受けた映像の透明な所を透かして、AR の画面を見せるか</td></tr>
+  <tr><td class="mono">DPT Data</td><td><span class="mono">Mask only</span> / <span class="mono">Depth</span></td></tr>
+  <tr><td class="mono">Restart System</td><td>AR と通信をすべて初期化し直します。IP などを変えても反映されないときに</td></tr>
+  <tr><td class="mono">Credits</td><td>使っているもの (NDI®、フォント、3D モデル) と、サポート・プライバシー・規約へのリンク</td></tr>
+  <tr><td class="mono">Guide</td><td>このページを開きます (1.1.4 から)</td></tr>
+</table>
+
+<h3>うまくいかないとき</h3>
+<table>
+  <tr><th>症状</th><th>確かめること</th></tr>
+  <tr><td>PC に何も届かない</td><td>同じネットワークか。iPhone の 設定 &gt; trkAR &gt; ローカルネットワーク がオンか。PC IP Address と Port が合っているか。右上の <span class="mono">OSC</span> の Hz が 0 なら、トラッキングが切れています (周りを見回す)</td></tr>
+  <tr><td>NDI のソースが出ない</td><td>同じネットワークか確かめて <span class="mono">rescan</span>。会社や学校の Wi-Fi は、端末どうしの通信が止められていることがあります</td></tr>
+  <tr><td>映像がカクつく・遅れる</td><td>MONI の下の数字で、<span class="mono">LIVE</span> の先のアドレスが有線側か (Wi-Fi 側でつながっていることがあります)。温度が HOT なら冷やす。<span class="mono">CAM / MONI Resolution</span> を Low に。使わない CAM / DPT / MONI は消す</td></tr>
+  <tr><td>数値が飛ぶ・ずれる</td><td>見回して <span class="mono">Mapped</span> に。暗い所、白い壁だけ、鏡やガラスの多い所は苦手です。直らなければ <span class="mono">Rst</span> を 2 回</td></tr>
+  <tr><td>床の高さが合わない</td><td>十字を床にしっかり向けて、もう一度 <span class="mono">SET GND</span></td></tr>
+  <tr><td>ピントが前後する</td><td>上の列の <span class="mono">AF</span> でピントを止める</td></tr>
+</table>
+<p>そのほかは <a href="support.html">サポート</a> へ。</p>
+
+<footer>
+<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、その見解を示すものでもありません。</p>
+<p>© 2026 lunacava. NDI® は Vizrt NDI AB の登録商標です。trkAR は Vizrt NDI AB と提携しておらず、承認・後援も受けていません。</p>
+</footer>
+<script>document.querySelectorAll('.lang-switch a').forEach(function(a){a.addEventListener('click',function(e){try{localStorage.setItem('trkar-lang',a.dataset.lang)}catch(_){}if(location.hash){e.preventDefault();location.href=a.getAttribute('href')+location.hash}})})</script>
+</body>
+</html>

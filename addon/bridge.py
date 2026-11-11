@@ -17,6 +17,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import bpy
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 DEFAULT_PORT = 9310
 # メインスレッドの返事を待つ上限 (シーンを開くのに時間がかかることがある)
@@ -50,11 +55,11 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/") == "/state":
             self._send(200, _run("state", {}))
         else:
-            self._send(404, {"ok": False, "error": "GET は /state だけ"})
+            self._send(404, {"ok": False, "error": _t("GET supports /state only")})
 
     def do_POST(self):
         if self.path.rstrip("/") != "/command":
-            self._send(404, {"ok": False, "error": "POST は /command だけ"})
+            self._send(404, {"ok": False, "error": _t("POST supports /command only")})
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -62,21 +67,21 @@ class _Handler(BaseHTTPRequestHandler):
             command = body["command"]
             args = body.get("args") or {}
             if not isinstance(args, dict):
-                raise ValueError("args は object")
+                raise ValueError(_t("args must be an object"))
         except (ValueError, KeyError, TypeError) as exc:
-            self._send(400, {"ok": False, "error": "読めない命令: %s" % exc})
+            self._send(400, {"ok": False, "error": _t("Unreadable command: %s") % exc})
             return
         self._send(200, _run(command, args))
 
 
 def _run(command, args):
     if command not in _state["handlers"]:
-        return {"ok": False, "error": "知らない命令: %s (使えるのは %s)" % (
+        return {"ok": False, "error": _t("Unknown command: %s (available: %s)") % (
             command, ", ".join(sorted(_state["handlers"])))}
     job = _Job(command, args)
     _pending.put(job)
     if not job.done.wait(WAIT_SECONDS):
-        return {"ok": False, "error": "Blender が %d 秒返事をしません" % WAIT_SECONDS}
+        return {"ok": False, "error": _t("Blender has not responded for %d seconds") % WAIT_SECONDS}
     return job.reply
 
 
@@ -106,7 +111,7 @@ def _pump():
                 result = _state["handlers"][job.command](bpy.context, **job.args)
             job.reply = {"ok": True, "result": result}
         except TypeError as exc:
-            job.reply = {"ok": False, "error": "引数が合いません: %s" % exc}
+            job.reply = {"ok": False, "error": _t("Arguments do not match: %s") % exc}
         except Exception as exc:
             job.reply = {"ok": False, "error": str(exc)}
         _state["last"] = "%s: %s" % (job.command, "OK" if job.reply["ok"] else job.reply["error"])
@@ -140,7 +145,7 @@ def stop():
             job = _pending.get_nowait()
         except queue.Empty:
             break
-        job.reply = {"ok": False, "error": "通信ポートを閉じました"}
+        job.reply = {"ok": False, "error": _t("Automation Port was closed")}
         job.done.set()
 
 

@@ -28,6 +28,11 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from . import take
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 FOLDER = "for_generation"
 # 書き出しに入れないもの (ライブ・再生の板や深度スクリーン)
@@ -152,6 +157,8 @@ class Plate:
 
     def __init__(self, path, info):
         self.path = path
+        # 背景の CG とのずれ (コマ)。ここで受けるコマは CG の時間なので、ファイルはずれを引いたコマで読む
+        self.offset = take.time_offset(info)
         self.has_video = bool(info.get("video", True)) and os.path.isdir(os.path.join(path, "video"))
         self.has_alpha = bool(info.get("alpha")) and os.path.isdir(os.path.join(path, "alpha"))
         self.has_depth = os.path.isdir(os.path.join(path, "depth")) and bool(os.listdir(os.path.join(path, "depth")))
@@ -161,7 +168,7 @@ class Plate:
         return self.has_alpha or self.has_depth
 
     def _file(self, sub, frame, ext):
-        p = os.path.join(self.path, sub, take._frame_name(frame) + ext)
+        p = os.path.join(self.path, sub, take._frame_name(frame - self.offset) + ext)
         return p if os.path.exists(p) else None
 
     def color(self, frame, size=None):
@@ -427,14 +434,14 @@ bottom-left: back toward the camera, bottom-right: left).
 def export(scene, player, camera, long_side=960, first=None, last=None, layout=True, progress=None):
     """再生中のテイク (player) から for_generation/ を書く。書いたフォルダと manifest (dict) を返す"""
     if not player.active:
-        raise RuntimeError("テイクを再生できる状態にしてください")
+        raise RuntimeError(_t("Make the take ready to play first"))
     progress = progress or (lambda *_args: None)
     info, path = player.info, player.path
     first = info["frame_start"] if first is None else first
     last = info["frame_end"] if last is None else last
     frames = list(range(first, last + 1))
     if not frames:
-        raise RuntimeError("書き出す範囲がありません")
+        raise RuntimeError(_t("No range to export"))
     out = os.path.join(path, FOLDER)
     if os.path.isdir(out):
         os.rename(out, out + time.strftime("_%Y%m%d_%H%M%S", time.localtime(os.path.getmtime(out))))
@@ -488,7 +495,7 @@ def export(scene, player, camera, long_side=960, first=None, last=None, layout=T
                           "width": size[0], "height": size[1], "fps": fps, "frames": len(frames),
                           "person": "outline" if plate.has_mask else "none (no person mask in the take)"},
         "actor.jpg": {"role": "reference image of the actor", "input": "reference_image",
-                      "take_frame": actor_frame} if actor_frame is not None else None,
+                      "take_frame": actor_frame - plate.offset} if actor_frame is not None else None,
         "layout.png": {"role": "reference image of the location (2x2: forward, right, back, left from the actor)",
                        "input": "reference_image"} if layout else None,
         "first_frame.png": {"role": "first frame of the take (for models that start from an image)",
@@ -501,6 +508,8 @@ def export(scene, player, camera, long_side=960, first=None, last=None, layout=T
         "made_by": "trkAR Camera",
         "take": os.path.basename(path),
         "frame_start": first, "frame_end": last, "fps": fps, "seconds": round(len(frames) / fps, 3),
+        # frame_start / frame_end は背景の CG の時間。テイクのコマはこれから time_offset を引いたもの
+        "time_offset": plate.offset,
         "blend": take.blend_label(),
         "model": "Any video generation model that accepts a reference video and reference images with a text "
                  "prompt. <Video 1> = reference.mp4, <Picture 1> = layout.png, <Picture 2> = actor.jpg",

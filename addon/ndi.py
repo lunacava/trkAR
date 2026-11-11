@@ -8,6 +8,11 @@ import ctypes
 import os
 import sys
 import time
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 
 def _fourcc(code):
@@ -190,8 +195,7 @@ def load(override=""):
         break
     else:
         raise RuntimeError(
-            "NDI ランタイム (libndi) が見つかりません。NDI SDK か NDI Tools を"
-            "インストールするか、アドオン設定でパスを指定してください。\n" + "\n".join(errors)
+            _t("NDI runtime (libndi) not found. Install the NDI SDK or NDI Tools, or set the path in the add-on preferences.\n") + "\n".join(errors)
         )
 
     lib.NDIlib_initialize.restype = ctypes.c_bool
@@ -222,7 +226,7 @@ def load(override=""):
     lib.NDIlib_recv_free_video_v2.restype = None
 
     if not lib.NDIlib_initialize():
-        raise RuntimeError("NDIlib_initialize() に失敗しました (CPU 非対応?)")
+        raise RuntimeError(_t("NDIlib_initialize() failed (CPU not supported?)"))
     _lib = lib
     return lib
 
@@ -238,7 +242,7 @@ class Sender:
         settings = SendCreate(self._name, None, False, False)
         self._instance = self._lib.NDIlib_send_create(ctypes.byref(settings))
         if not self._instance:
-            raise RuntimeError("NDIlib_send_create() に失敗しました")
+            raise RuntimeError(_t("NDIlib_send_create() failed"))
         self._frame = VideoFrameV2()
 
     def send_rgba(self, pixels, width, height, fps, with_alpha, timecode=TIMECODE_SYNTHESIZE):
@@ -279,7 +283,7 @@ class Finder:
         settings = FindCreate(True, None, None)
         self._instance = self._lib.NDIlib_find_create_v2(ctypes.byref(settings))
         if not self._instance:
-            raise RuntimeError("NDIlib_find_create_v2() に失敗しました")
+            raise RuntimeError(_t("NDIlib_find_create_v2() failed"))
 
     def sources(self):
         """見つかっているソース名の一覧 (例: "IPHONE (trkAR)")。"""
@@ -319,7 +323,7 @@ class Receiver:
         )
         self._instance = self._lib.NDIlib_recv_create_v3(ctypes.byref(settings))
         if not self._instance:
-            raise RuntimeError("NDIlib_recv_create_v3() に失敗しました")
+            raise RuntimeError(_t("NDIlib_recv_create_v3() failed"))
         self._frame = VideoFrameV2()
 
     def capture(self, copy_frame, timeout_ms=100):
@@ -332,7 +336,7 @@ class Receiver:
         frame = self._frame
         kind = self._lib.NDIlib_recv_capture_v3(self._instance, ctypes.byref(frame), None, None, timeout_ms)
         if kind == FRAME_TYPE_ERROR:
-            raise RuntimeError("NDI の接続が切れました")
+            raise RuntimeError(_t("The NDI connection was lost"))
         if kind != FRAME_TYPE_VIDEO:
             return False
         try:

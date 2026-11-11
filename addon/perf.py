@@ -13,6 +13,11 @@ import os
 import time
 
 import bpy
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 WINDOW = 3.0  # 直近この秒数で数える
 
@@ -94,12 +99,12 @@ def lines():
     """パネルに出す行"""
     s = stats()
     draw = s.pop("draw")
-    out = ["描画 %.0f fps (間隔 %.0f ms、遅いとき %.0f ms)" % (draw["fps"], draw["interval_ms"], draw["interval_p95_ms"])]
-    labels = {"tracking": "カメラ", "ndi_in": "実写", "depth": "深度"}
+    out = [_t("Drawing %.0f fps (interval %.0f ms, slowest %.0f ms)") % (draw["fps"], draw["interval_ms"], draw["interval_p95_ms"])]
+    labels = {"tracking": _t("Camera"), "ndi_in": _t("Video"), "depth": _t("Depth")}
     for name in ("tracking", "ndi_in", "depth"):
         if name in s:
             v = s[name]
-            out.append("%s %.0f 回/秒 (1 回 %.1f ms、遅いとき %.1f ms)" % (labels[name], v["per_s"], v["ms"], v["p95_ms"]))
+            out.append(_t("%s %.0f /s (%.1f ms each, slowest %.1f ms)") % (labels[name], v["per_s"], v["ms"], v["p95_ms"]))
     return out
 
 

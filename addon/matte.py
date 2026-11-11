@@ -10,6 +10,11 @@ import sys
 import threading
 import time
 from collections import deque
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 SCRIPT = "trkar_matte.py"
 OUTPUT_NAME = "trkAR Matte"
@@ -64,7 +69,7 @@ class MatteRelay:
         self.stop()
         python = python_for(folder)
         if python is None:
-            raise RuntimeError("%s に .venv がありません (tools/matte/README の準備を参照)" % folder)
+            raise RuntimeError(_t("No .venv in %s (see the setup in tools/matte/README)") % folder)
         self._lines.clear()
         self.last_error = ""
         self.source = source
@@ -86,7 +91,7 @@ class MatteRelay:
         # TerminateProcess で即殺すので終了コードが 1 になり、シグナルは意味を持たない。
         # こちらから止めた (stop() を呼んだ) ときはどのコードでもエラー扱いしない
         if code not in (0, -15) and process not in self._stopped:
-            self.last_error = self._lines[-1] if self._lines else "中継が終了しました (%d)" % code
+            self.last_error = self._lines[-1] if self._lines else _t("The relay exited (%d)") % code
         self._stopped.discard(process)
 
     def stop(self):

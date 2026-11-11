@@ -12,6 +12,11 @@ import subprocess
 import sys
 import threading
 import time
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 CAMERA_ADDRESS = "/client/current"
 RIG_ADDRESS = "/client/rig"
@@ -568,7 +573,7 @@ class OSCServer:
         try:
             sock.sendto(encode_message(address, args), (host, port))
         except OSError as exc:
-            self.last_error = "送信: %s" % exc
+            self.last_error = _t("Send: %s") % exc
 
     def remote_for(self, camera_id):
         """その Camera ID のカメラを動かす RemoteControl のうち最後に届いたもの (なければ None)。"""
@@ -603,7 +608,7 @@ class OSCServer:
                 self.last_error = "parse: %s" % exc
             except Exception as exc:  # noqa: BLE001
                 # ここで落ちるとスレッドだけ消えてソケットは開いたまま (何も届いていないように見える)
-                self.last_error = "受信処理: %s: %s" % (type(exc).__name__, exc)
+                self.last_error = _t("Receive handling: %s: %s") % (type(exc).__name__, exc)
 
     def _handle(self, data, sender_ip=None):
         messages = parse_packet(data)

@@ -14,12 +14,16 @@ import sys
 import threading
 
 import bpy
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", "trkar-screen-ndi")
 # 送る範囲 (エリア) が変わっていないかを見る間隔 (秒)
 WATCH_INTERVAL = 0.5
-PERMISSION_HELP = ("画面収録の許可が要ります: システム設定 > プライバシーとセキュリティ > 画面とシステムオーディオ録音 "
-                   "で Blender をオンにして、Blender を起動し直す")
+PERMISSION_HELP = ("Screen recording permission is required: turn on Blender in System Settings > Privacy & Security > Screen & System Audio Recording, then restart Blender")
 
 
 def supported():
@@ -55,7 +59,7 @@ class OSScreenOutput:
         """area が None ならウィンドウ全体、あればそのエリアだけを送る。"""
         self.stop()
         if not supported():
-            raise RuntimeError("OS の画面キャプチャは macOS 14 以降で使えます (%s が要ります)" % HELPER)
+            raise RuntimeError(_t("OS screen capture requires macOS 14 or later (%s is required)") % HELPER)
         if not os.access(HELPER, os.X_OK):
             os.chmod(HELPER, 0o755)  # zip から入れると実行の印が落ちることがある
         self.window_pointer = window.as_pointer()
@@ -105,7 +109,7 @@ class OSScreenOutput:
                 self.last_error = PERMISSION_HELP if "permission" in message else message
         code = process.wait()
         if code not in (0, -15) and not self.last_error:
-            self.last_error = "送出アプリが止まりました (終了コード %d)" % code
+            self.last_error = _t("The output app stopped (exit code %d)") % code
 
     @staticmethod
     def _measure(window, area):

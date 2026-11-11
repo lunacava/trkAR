@@ -18,6 +18,11 @@ import bpy
 import numpy as np
 
 from . import ndi
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 
 def supported():
@@ -53,7 +58,7 @@ class ScreenOutput:
     def start(self, window, area, name, fps, half, library_override=""):
         """area が None ならウィンドウ全体、あればそのエリアだけを送る。"""
         if not supported():
-            raise RuntimeError("画面の送出には Blender 5.3 以降が必要です (Window.screenshot がありません)")
+            raise RuntimeError(_t("Screen output requires Blender 5.3 or later (no Window.screenshot)"))
         self.stop()
         self.sender = ndi.Sender(name, library_override)
         self.window_pointer = window.as_pointer()
@@ -119,7 +124,7 @@ class ScreenOutput:
     def _capture(self):
         window, area = self._find()
         if window is None:
-            self.last_error = "送るウィンドウ / エリアが見つかりません (閉じたか、画面を切り替えた)"
+            self.last_error = _t("Window / area to send not found (closed, or the screen was switched)")
             return
         t0 = time.perf_counter()
         shot = window.screenshot()

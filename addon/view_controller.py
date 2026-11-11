@@ -9,6 +9,12 @@ MOVE (前後左右)・CRANE (上下)・PAN (横)・TILT (縦) を、マウスで
 - 受信していないときは、カメラのオブジェクトを直接動かす
 ROT RST (向きだけ) / ALL RST (全部) で戻す (受信中はオフセット、受信していないときは動かし始める前のカメラ)。
 コントローラーの外のクリックやキーは、そのまま Blender に渡す。
+
+置き場所は「ビューの右下」(上のとおり描く) か「パネルの中」(Blender でオフセットのパネルに、つまむと 0 に戻る
+スライダーで出す)。パネルのスライダーを離したことは Blender から直接は届かないので、つまんでいる間は
+マウスの動きがスライダーだけに届くこと (Blender が操作中のボタンにイベントを独り占めさせる) を使い、
+離したあと最初にマウスの動きがこちらに届いたら 0 に戻す。カメラを動かすのは、つまんでいる間も止まらない
+bpy.app.timers で回す (モーダルのタイマーのイベントもつまんでいる間は届かないため)。
 """
 
 import math
@@ -21,6 +27,13 @@ from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix, Quaternion, Vector
 
 from . import tracking
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
+
+STEP_INTERVAL = 1.0 / 60.0
 
 SPEEDS = (("S", 0.25, 15.0), ("M", 1.0, 45.0), ("F", 4.0, 120.0))
 # キーボード: キー → (軸, 向き)。軸は move_x / move_y / crane / look_x / look_y
@@ -47,10 +60,8 @@ class Controller:
         self.mouse_crane = 0.0
         self.mouse_look = (0.0, 0.0)
         self.roll = 0.0
-        self.speed = 1
-        # キーボードで押しているキー (KEYS のキー名) と、キー操作を受けるか
+        # キーボードで押しているキー (KEYS のキー名)
         self.keys = set()
-        self.keyboard = True
         # レンズの段 (焦点距離・F 値・ピント) を開いているか
         self.lens_open = False
         # 受信していないときに直接動かす前のカメラ (ALL RST で戻す所)
@@ -58,6 +69,33 @@ class Controller:
         self.dragging = None
         self._last = None
         self._draw_fn = self.draw
+        self._step_fn = self._step
+
+    # --- 速さ・キー操作・置き場所 (パネルのボタンと右下の絵の両方から変えるので WindowManager のプロパティに置く)
+
+    @staticmethod
+    def _props():
+        return bpy.context.window_manager.trkar_stick
+
+    def _get_speed(self):
+        return int(self._props().speed)
+
+    def _set_speed(self, value):
+        self._props().speed = str(value)
+
+    speed = property(_get_speed, _set_speed)
+
+    def _get_keyboard(self):
+        return self._props().keyboard
+
+    def _set_keyboard(self, value):
+        self._props().keyboard = value
+
+    keyboard = property(_get_keyboard, _set_keyboard)
+
+    @property
+    def in_panel(self):
+        return self._props().place == "PANEL"
 
     # --- tracking.integrate_controls が読む値 (マウスのスティックとキーボードを足して -1...1)
 
@@ -110,14 +148,19 @@ class Controller:
         self.area_pointer = area.as_pointer()
         self.handle = bpy.types.SpaceView3D.draw_handler_add(self._draw_fn, (), "WINDOW", "POST_PIXEL")
         tracking.local_stick = self
+        if not bpy.app.timers.is_registered(self._step_fn):
+            bpy.app.timers.register(self._step_fn, first_interval=STEP_INTERVAL)
         area.tag_redraw()
 
     def stop(self):
         if self.handle is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self.handle, "WINDOW")
             self.handle = None
+        if bpy.app.timers.is_registered(self._step_fn):
+            bpy.app.timers.unregister(self._step_fn)
         if tracking.local_stick is self:
             tracking.local_stick = None
+        self.release_panel()
         self.release()
         self.release_keys()
         self._last = None
@@ -130,6 +173,40 @@ class Controller:
 
     def release_keys(self):
         self.keys.clear()
+
+    def release_panel(self):
+        """パネルのスライダーを 0 に戻す (update で mouse_* も 0 になる)。戻したら True。"""
+        try:
+            props = self._props()
+        except AttributeError:
+            return False
+        if not any(getattr(props, name) for name in STICK_NAMES):
+            return False
+        for name in STICK_NAMES:
+            if getattr(props, name):
+                setattr(props, name, 0.0)
+        return True
+
+    def stick_from_panel(self, props):
+        """パネルのスライダーが動いた (つまんでいる間、動かすたびに来る)。"""
+        self.mouse_move = (_curve(props.move_x), _curve(props.move_y))
+        self.mouse_crane = _curve(props.crane)
+        self.mouse_look = (_curve(props.pan), _curve(props.tilt))
+
+    def _step(self):
+        """カメラを動かす・絵を描き直す (つまんでいる間も回る)。"""
+        if not self.running:
+            return None
+        try:
+            self.step_camera(bpy.context)
+        except (AttributeError, ReferenceError):
+            return STEP_INTERVAL
+        if self.dragging is not None or self.keys or self.active:
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.as_pointer() == self.area_pointer or (self.in_panel and area.type in ("VIEW_3D", "PROPERTIES")):
+                        area.tag_redraw()
+        return STEP_INTERVAL
 
     # --- 置き場所 (リージョンの画素、左下が原点)
 
@@ -367,7 +444,7 @@ class Controller:
 
     def draw(self):
         area = bpy.context.area
-        if area is None or area.as_pointer() != self.area_pointer:
+        if area is None or area.as_pointer() != self.area_pointer or self.in_panel:
             return
         lay = self.layout(bpy.context.region, area)
         ui, r = lay["ui"], lay["r"]
@@ -438,7 +515,7 @@ class Controller:
         for label, (bx, by, bw, bh), on in labels:
             tw, th = blf.dimensions(font, label)
             _text(font, label, bx + (bw - tw) / 2, by + (bh - th) / 2, dark if on else ACCENT)
-        mode = "オフセット" if tracking.current_pose() is not None else "カメラを直接"
+        mode = _t("Offset") if tracking.current_pose() is not None else _t("Camera directly")
         rx, ry, rw, rh = lay["resets"]["all"]
         _text(font, mode, rx + rw + 8 * ui, ry + 5 * ui, DIM)
         if self.keyboard:
@@ -504,11 +581,8 @@ def _text(font, text, x, y, color):
 
 class TRKAR_OT_view_controller(bpy.types.Operator):
     bl_idname = "trkar.view_controller"
-    bl_label = "ビューのコントローラー"
-    bl_description = ("3D ビューの右下に小さなコントローラー (MOVE / CRANE / PAN / TILT) を出す。もう一度押すか × で閉じる。"
-                      "受信中は「Blender でオフセット」に、受信していないときはカメラを直接動かす")
-
-    _timer = None
+    bl_label = "View Controller"
+    bl_description = ("Show a small controller (MOVE / CRANE / PAN / TILT) at the bottom right of the 3D view. Press again or × to close. While receiving it moves the \"Blender Offset\"; otherwise it moves the camera directly")
 
     def invoke(self, context, _event):
         if controller.running:
@@ -517,10 +591,9 @@ class TRKAR_OT_view_controller(bpy.types.Operator):
         from . import _view3d  # 3D ビューの外 (プロパティエディター) から押されたときの 3D ビュー
         window, area = _view3d(context)
         if area is None:
-            self.report({"ERROR"}, "3D ビューがありません")
+            self.report({"ERROR"}, _t("No 3D view"))
             return {"CANCELLED"}
         controller.start(area)
-        self._timer = context.window_manager.event_timer_add(1.0 / 60.0, window=window)
         context.window_manager.modal_handler_add(self)
         return {"RUNNING_MODAL"}
 
@@ -532,11 +605,9 @@ class TRKAR_OT_view_controller(bpy.types.Operator):
         if area is None:
             controller.stop()
             return self._finish(context)
-        if event.type == "TIMER":
-            controller.step_camera(context)
-            if controller.dragging is not None or controller.keys:
-                area.tag_redraw()
-            return {"PASS_THROUGH"}
+        if event.type in ("MOUSEMOVE", "LEFTMOUSE", "WINDOW_DEACTIVATE") and controller.release_panel():
+            # パネルのスライダーを離した (つまんでいる間はマウスの動きがここまで届かない)
+            area.tag_redraw()
         if event.type == "WINDOW_DEACTIVATE":
             controller.release_keys()
             return {"PASS_THROUGH"}
@@ -551,6 +622,8 @@ class TRKAR_OT_view_controller(bpy.types.Operator):
                 return {"RUNNING_MODAL"}
             if event.is_repeat and controller.keyboard and event.type in KEYS:
                 return {"RUNNING_MODAL"}  # 押しっぱなしの繰り返しも Blender に渡さない
+        if controller.in_panel:
+            return {"PASS_THROUGH"}
         if region is not None and (inside or controller.dragging is not None) and controller.handle_event(event, region, area):
             area.tag_redraw()
             if not controller.running:
@@ -559,11 +632,99 @@ class TRKAR_OT_view_controller(bpy.types.Operator):
         return {"PASS_THROUGH"}
 
     def _finish(self, context):
-        if self._timer is not None:
-            context.window_manager.event_timer_remove(self._timer)
-            self._timer = None
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == "VIEW_3D":
                     area.tag_redraw()
         return {"FINISHED"}
+
+
+# --- パネルの中に出すとき
+
+STICK_NAMES = ("move_y", "move_x", "crane", "pan", "tilt")
+STICK_LABELS = {"move_y": "Forward / Back", "move_x": "Left / Right", "crane": "Up / Down (CRANE)", "pan": "Pan", "tilt": "Tilt"}
+
+
+def _stick_update(self, _context):
+    controller.stick_from_panel(self)
+
+
+def _place_update(_self, context):
+    controller.release()
+    controller.release_panel()
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+
+
+def _stick(name):
+    return bpy.props.FloatProperty(name=STICK_LABELS[name], default=0.0, min=-1.0, max=1.0, update=_stick_update,
+                                   description=_t("Keeps moving at a speed set by how far you drag it while you hold it (returns to 0 and stops when released)"))
+
+
+class TRKAR_StickProps(bpy.types.PropertyGroup):
+    place: bpy.props.EnumProperty(
+        name="Placement", default="PANEL", update=_place_update,
+        items=(("PANEL", "In the Panel", "Show it as sliders in this panel"),
+               ("VIEW", "View Bottom Right", "Draw sticks at the bottom right of the 3D view")))
+    speed: bpy.props.EnumProperty(
+        name="Speed", default="1",
+        items=[(str(i), label, "At full tilt: %g m/s, %g°/s" % (move, turn))
+               for i, (label, move, turn) in enumerate(SPEEDS)])
+    keyboard: bpy.props.BoolProperty(
+        name="Keyboard", default=True,
+        description="While the mouse is over the 3D view: W / S forward / back, A / D left / right, E / Q up / down, ← / → pan, ↑ / ↓ tilt, 1 / 2 / 3 speed")
+    move_y: _stick("move_y")
+    move_x: _stick("move_x")
+    crane: _stick("crane")
+    pan: _stick("pan")
+    tilt: _stick("tilt")
+
+
+class TRKAR_OT_view_reset(bpy.types.Operator):
+    bl_idname = "trkar.view_reset"
+    bl_label = "Reset with the Controller"
+    bl_description = "While receiving, resets the \"Blender Offset\"; otherwise returns the camera to where it was before the controller moved it"
+    target: bpy.props.EnumProperty(items=(("ROTATION", "Rotation Only", ""), ("ALL", "All", "")))
+
+    def execute(self, context):
+        controller.reset(context, rotation_only=self.target == "ROTATION")
+        return {"FINISHED"}
+
+
+def draw_panel(layout, context):
+    """「Blender でオフセット」のパネルの中のコントローラー (開いていて、置き場所がパネルのとき)。"""
+    props = context.window_manager.trkar_stick
+    if not controller.running:
+        return
+    layout.row(align=True).prop(props, "place", expand=True)
+    if props.place != "PANEL":
+        return
+    box = layout.box()
+    row = box.row(align=True)
+    row.prop(props, "speed", expand=True)
+    row.prop(props, "keyboard", text="KEY", toggle=True)
+    col = box.column(align=True)
+    for name in STICK_NAMES:
+        col.prop(props, name, slider=True)
+    row = box.row(align=True)
+    row.operator("trkar.view_reset", text="ROT RST").target = "ROTATION"
+    row.operator("trkar.view_reset", text="ALL RST").target = "ALL"
+    row.prop(context.scene.trkar, "dof_autofocus", text="AF", toggle=True)
+
+
+classes = (TRKAR_StickProps, TRKAR_OT_view_reset, TRKAR_OT_view_controller)
+
+
+def register():
+    for cls in classes:
+        bpy.utils.register_class(cls)
+    bpy.types.WindowManager.trkar_stick = bpy.props.PointerProperty(type=TRKAR_StickProps)
+
+
+def unregister():
+    controller.stop()
+    del bpy.types.WindowManager.trkar_stick
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)

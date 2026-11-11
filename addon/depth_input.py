@@ -30,6 +30,11 @@ import bpy
 import numpy as np
 
 from . import ndi, ndi_input, perf
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 OBJECT_NAME = "trkAR Depth Screen"
 # 人の後ろに置く実写の板 (深度スクリーンの子)。人の居ない所はこれが見える
@@ -38,6 +43,8 @@ MASK_IMAGE_NAME = "trkAR Depth Mask"
 MASK_NODE = "trkAR Mask"
 EDGE_NODE = "trkAR Edge"
 ALPHA_NODE = "trkAR Video Alpha"
+# 透けかたを決める最後のノード (くっきり: 半透明の幅を狭める / やわらか: そのまま)
+SHARPEN_NODE = "trkAR Edge Sharpen"
 # 映像のアルファ (RVM) で切るとき、ARKit の人物マスクより外側まで人の深度を広げる画素数
 # (RVM の輪郭や髪は ARKit のマスクより外へ出るので、そこを背景の深度にしない)
 MATTE_GROW = 3
@@ -288,11 +295,13 @@ def ensure_material(obj):
 
 
 def update_edge(settings):
-    """エッジ位置 / ぼかしをマテリアルに反映する。"""
+    """エッジ位置 / ぼかし / 輪郭の描き方をマテリアルに反映する。"""
+    update_sharpen(settings)
     obj = bpy.data.objects.get(OBJECT_NAME)
     if obj is None or obj.type != "MESH":
         return
     material = ensure_material(obj)
+    apply_sharpen(material, settings)
     edge = material.node_tree.nodes.get(EDGE_NODE)
     if edge is None:
         return
@@ -302,6 +311,49 @@ def update_edge(settings):
     half = max(0.005, 0.5 * settings.depth_edge_feather)
     edge.inputs["From Min"].default_value = max(0.01, threshold - half)
     edge.inputs["From Max"].default_value = min(0.99, threshold + half)
+
+
+def apply_sharpen(material, settings):
+    """透け具合 (ミックスシェーダーの Fac) の手前に、半透明の幅を狭めるノードを入れて設定する。
+
+    板は奥行きを書くようにディザで透かしている (ピントのボケが板の距離で効くように)。ディザは半透明を点の粗密で
+    描き、何コマか重ねてならす前提なので、実写を受けている間 (毎コマ描き直す) は輪郭に点が散ってザラザラに見える。
+    くっきりでは半透明の幅を 1〜2 画素に狭めて、散る点をなくす (代わりに輪郭は少しギザギザになる)。"""
+    tree = material.node_tree if material is not None else None
+    if tree is None:
+        return
+    mix = next((n for n in tree.nodes if n.type == "MIX_SHADER"), None)
+    if mix is None or not mix.inputs["Fac"].is_linked:
+        return
+    node = tree.nodes.get(SHARPEN_NODE)
+    if node is None:
+        source = mix.inputs["Fac"].links[0].from_socket
+        node = tree.nodes.new("ShaderNodeMapRange")
+        node.name = node.label = SHARPEN_NODE
+        node.clamp = True
+        node.location = (mix.location.x - 180, mix.location.y + 200)
+        tree.links.new(source, node.inputs["Value"])
+        tree.links.new(node.outputs["Result"], mix.inputs["Fac"])
+    if settings.edge_style == "SHARP":
+        half = 0.5 * settings.edge_sharp_width
+        node.interpolation_type = "SMOOTHSTEP"
+        node.inputs["From Min"].default_value = 0.5 - half
+        node.inputs["From Max"].default_value = 0.5 + half
+    else:
+        node.interpolation_type = "LINEAR"
+        node.inputs["From Min"].default_value = 0.0
+        node.inputs["From Max"].default_value = 1.0
+
+
+def update_sharpen(settings):
+    """実写を貼った透ける板 (NDI のスクリーン・カメラの前の板) すべてに、輪郭の描き方を入れる。"""
+    for material in bpy.data.materials:
+        tree = material.node_tree
+        if tree is None or material.name.startswith(OBJECT_NAME):
+            continue  # 深度スクリーンは update_edge で入れる
+        if any(n.type == "TEX_IMAGE" and n.image is not None and n.image.name == ndi_input.IMAGE_NAME
+               for n in tree.nodes):
+            apply_sharpen(material, settings)
 
 
 def _shifted(a, dy, dx):
@@ -527,11 +579,11 @@ class DepthInput:
 
     def _on_frame(self, frame):
         if frame.FourCC not in (ndi.FOURCC_PA16, ndi.FOURCC_P216):
-            self.last_error = "深度ソースではありません (16bit 映像が来ていない)"
+            self.last_error = _t("Not a depth source (no 16-bit video is coming in)")
             return
         meta = parse_metadata(frame.p_metadata.decode("utf-8", "replace") if frame.p_metadata else "")
         if meta is None:
-            self.last_error = "trkARDepth メタデータがありません"
+            self.last_error = _t("No trkARDepth metadata")
             return
         width, height, stride = frame.xres, frame.yres, frame.line_stride_in_bytes
         plane = stride * height

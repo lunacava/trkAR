@@ -27,6 +27,11 @@ import threading
 import time
 
 import bpy
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 HOOK_VERSION = 1
 STATE_FILE = "hook.json"
@@ -107,14 +112,14 @@ def busy(path=None):
 
 
 def label(st):
-    event = {"recorded": "録画", "exported": "書き出し"}.get(st.get("event"), st.get("event", ""))
+    event = {"recorded": _t("recording"), "exported": _t("export")}.get(st.get("event"), st.get("event", ""))
     if st["state"] == "queued":
-        return "連携: 待ち (%s)" % event, "TIME"
+        return _t("Hook: queued (%s)") % event, "TIME"
     if st["state"] == "running":
-        return "連携: 実行中 (%s)" % event, "TIME"
+        return _t("Hook: running (%s)") % event, "TIME"
     if st["state"] == "done":
-        return "連携: 済み (%s) %s" % (event, st.get("message", "")), "CHECKMARK"
-    return "連携: 失敗 (%s) %s" % (event, st.get("message", "")), "ERROR"
+        return _t("Hook: done (%s) %s") % (event, st.get("message", "")), "CHECKMARK"
+    return _t("Hook: failed (%s) %s") % (event, st.get("message", "")), "ERROR"
 
 
 def run(path, event, template, addon_version="", timeout_min=30):
@@ -122,7 +127,7 @@ def run(path, event, template, addon_version="", timeout_min=30):
     try:
         cmd = build_command(template, path, event)
     except (ValueError, KeyError, IndexError) as exc:
-        _set(path, {"state": "failed", "event": event, "message": "コマンドが読めません: %s" % exc, "url": ""})
+        _set(path, {"state": "failed", "event": event, "message": _t("Cannot read the command: %s") % exc, "url": ""})
         return False
     if cmd is None:
         return False
@@ -166,11 +171,11 @@ def _work():
             code, out = proc.returncode, proc.stdout or ""
             _log(path, out + (proc.stderr or ""))
         except subprocess.TimeoutExpired:
-            _log(path, "(%d 分で打ち切り)\n" % (timeout // 60))
-            out = json.dumps({"message": "%d 分で打ち切り" % (timeout // 60)})
+            _log(path, _t("(timed out after %d min)\n") % (timeout // 60))
+            out = json.dumps({"message": _t("Timed out after %d min") % (timeout // 60)})
         except OSError as exc:
-            _log(path, "起動できません: %s\n" % exc)
-            out = json.dumps({"message": "起動できません: %s" % exc})
+            _log(path, _t("Cannot start: %s\n") % exc)
+            out = json.dumps({"message": _t("Cannot start: %s") % exc})
         _results.put((path, event, code, out, started, time.monotonic() - t0))
 
 
@@ -194,7 +199,7 @@ def _poll():
         except queue.Empty:
             break
         result = _last_json(out)
-        message = str(result.get("message", "")) or ("" if code == 0 else "終了コード %s" % code)
+        message = str(result.get("message", "")) or ("" if code == 0 else _t("Exit code %s") % code)
         url = str(result.get("url", ""))
         _set(path, {"state": "done" if code == 0 else "failed", "event": event, "message": message, "url": url})
         try:

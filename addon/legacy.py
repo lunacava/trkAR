@@ -11,6 +11,11 @@
 """
 
 import bpy
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 OLD, NEW = "ARtrk ", "trkAR "
 SETTINGS_OLD, SETTINGS_NEW = "artrk", "trkar"
@@ -67,12 +72,12 @@ def copy_settings():
             props[SETTINGS_NEW] = props[SETTINGS_OLD].to_dict()
             copied += 1
         except Exception as exc:  # noqa: BLE001  写せなければ既定の設定のまま
-            print("trkAR: %s の古い設定 (scene.artrk) を写せません: %s" % (scene.name, exc))
+            print(_t("trkAR: cannot copy the old settings (scene.artrk) of %s: %s") % (scene.name, exc))
     return copied
 
 
 def migrate():
     renamed, copied = rename_data(), copy_settings()
     if renamed or copied:
-        print("trkAR: 名前を変える前 (ARtrk) のデータを引き継ぎました (名前 %d、シーンの設定 %d)" % (renamed, copied))
+        print(_t("trkAR: migrated data from before the rename (ARtrk) (names %d, scene settings %d)") % (renamed, copied))
     return renamed, copied

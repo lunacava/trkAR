@@ -21,6 +21,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.props import (
     BoolProperty,
+    CollectionProperty,
     EnumProperty,
     FloatProperty,
     FloatVectorProperty,
@@ -30,8 +31,8 @@ from bpy.props import (
 )
 from mathutils import Matrix, Vector
 
-from . import (bridge, depth_input, hooks, legacy, matte, ndi_input, os_screen, osc, perf, prep, screen_output, take,
-               tracking,
+from . import (bridge, depth_input, hooks, i18n, legacy, matte, ndi_input, os_screen, osc, perf, prep, screen_output,
+               take, tracking,
                view_controller)
 
 STUDIO = False
@@ -40,6 +41,7 @@ from .depth_input import DepthInput
 from .ndi_input import NDIInput
 from .ndi_output import NDIOutput
 from .screen_output import ScreenOutput
+from .i18n import _t
 
 ndi_output = NDIOutput()
 screen_out = ScreenOutput()
@@ -89,6 +91,48 @@ def _update_depth_edge(self, _context):
     depth_input.update_edge(self)
 
 
+_take_offset_quiet = {"on": False}
+
+
+def _take_offset_update(self, context):
+    if _take_offset_quiet["on"]:
+        return
+    _set_take_offset(context, self.take_time_offset)
+
+
+def _set_take_offset(context, offset):
+    """再生中のテイクを、背景の CG に対して offset コマずらす。タイムラインの今のコマ (CG の時間) はそのままで、
+    書き出しの範囲は同じ撮影の所を指すように一緒に動かす"""
+    scene = context.scene
+    settings = scene.trkar
+    if not player.active:
+        _sync_take_offset(settings, 0)
+        return 0
+    frame = scene.frame_current
+    delta = player.set_time_offset(scene, offset)
+    _sync_take_offset(settings, player.info["time_offset"])
+    if delta:
+        _take_offset_quiet["on"] = True
+        try:
+            settings.take_range_start = max(0, settings.take_range_start + delta)
+            settings.take_range_end = max(0, settings.take_range_end + delta)
+        finally:
+            _take_offset_quiet["on"] = False
+        _apply_take_range(context)
+        if scene.frame_start <= frame <= scene.frame_end:
+            scene.frame_set(frame)  # 同じ CG のコマに、ずらした実写のコマを読み直す
+    return delta
+
+
+def _sync_take_offset(settings, offset):
+    if settings.take_time_offset != offset:
+        _take_offset_quiet["on"] = True
+        try:
+            settings.take_time_offset = offset
+        finally:
+            _take_offset_quiet["on"] = False
+
+
 def _take_range_update(_self, context):
     # 書き出しの「範囲」を変えたら、再生中のテイクのタイムラインの in / out にも入れる
     _apply_take_range(context)
@@ -97,6 +141,14 @@ def _take_range_update(_self, context):
 def _take_path_update(_self, context):
     # 再生中にテイクのフォルダを選び直したら、そのテイクを読み直す (ライブ ↔ 再生を押し直さなくてよいように)
     _reload_selected_take(context)
+
+
+def _set_ui_language(context, mode):
+    """表示言語を変えたら、辞書を入れ直してパネルを描き直す"""
+    i18n.register(mode)
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            area.tag_redraw()
 
 
 def _reset_take(self, _context):
@@ -108,20 +160,24 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     ndi_library_path: StringProperty(
-        name="NDI ライブラリ",
-        description="libndi.dylib / Processing.NDI.Lib.x64.dll のパス。空なら自動検出",
+        name="NDI Library",
+        description="Path to libndi.dylib / Processing.NDI.Lib.x64.dll. Empty = detect automatically",
         subtype="FILE_PATH",
     )
+    ui_language: EnumProperty(
+        name="Interface Language", default="AUTO",
+        items=(("AUTO", "Follow Blender", "Japanese when Blender is set to Japanese, English otherwise"),
+               ("JA", "日本語", "Japanese even when Blender is set to English"),
+               ("EN", "English", "English even when Blender is set to Japanese")),
+        update=lambda self, context: _set_ui_language(context, self.ui_language))
     show_sidebar: BoolProperty(
-        name="3D ビューのサイドバーにも出す", default=True,
-        description="パネルは、プロパティエディターの「シーン」タブにいつも出る。これを入れると、"
-                    "3D ビューのサイドバー (N キー) の trkAR タブにも出す",
+        name="Also Show in 3D View Sidebar", default=True,
+        description="The panels always appear in the \"Scene\" tab of the Properties editor. Turn this on to also show them in the trkAR tab of the 3D View sidebar (N key)",
         update=lambda self, _context: _sync_sidebar(self.show_sidebar))
 
     matte_folder: StringProperty(
-        name="RVM 中継のフォルダ",
-        description="AI で人を切り抜く中継 (tools/matte の trkar_matte.py と .venv のあるフォルダ)。"
-                    "空ならアドオンの近くを探す",
+        name="RVM Relay Folder",
+        description="Relay that mattes people out with AI (the folder with tools/matte's trkar_matte.py and .venv). Empty = search near the add-on",
         subtype="DIR_PATH",
     )
 
@@ -129,373 +185,352 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
     # --- 撮影の来歴 (take.json の slate / environment / people)。.blend ごとではなくこの PC の設定に持つ
     # (撮影中に背景の .blend を開き替えても、スレートの番号が続くように) ---
     slate_production: StringProperty(name="Production", default=_DEFAULT_PRODUCTION,
-                                     description="作品の名前 (take.json の slate.production)。空なら記録しない (null)")
+                                     description="Production name (slate.production in take.json). Empty = not recorded (null)")
     slate_scene: IntProperty(name="Scene", default=0, min=0, update=_reset_take,
-                             description="シーン番号。0 は未設定 (S00C00T00)。変えると Take は 1 に戻る")
+                             description="Scene number. 0 = not set (S00C00T00). Changing it resets Take to 1")
     slate_cut: IntProperty(name="Cut", default=0, min=0, update=_reset_take,
-                           description="カット番号。0 は未設定。変えると Take は 1 に戻る")
+                           description="Cut number. 0 = not set. Changing it resets Take to 1")
     slate_take: IntProperty(name="Take", default=0, min=0,
-                            description="次に録るテイクの番号。Scene か Cut を設定していれば、REC を始めるたびに 1 つ増える")
-    shot_site: StringProperty(name="撮影環境", default="",
-                              description="撮影している場所・イベント (例 InterBee)。空なら記録しない (null)")
-    shot_host: StringProperty(name="PC の表示名", default="",
-                              description="この PC の呼び名 (例 Mac mini)。空なら記録しない (null)。"
-                                          "ホスト名 (hostname) は別に自動で記録する")
-    shot_creator: StringProperty(name="製作者", default="", description="空なら記録しない (null)")
-    shot_operator: StringProperty(name="撮影者", default="", description="空なら記録しない (null)")
+                            description="Number of the next take to record. If Scene or Cut is set, it goes up by 1 each time REC starts")
+    shot_site: StringProperty(name="Shoot Location", default="",
+                              description="Place or event of the shoot (e.g. InterBee). Empty = not recorded (null)")
+    shot_host: StringProperty(name="PC Display Name", default="",
+                              description="A name for this PC (e.g. Mac mini). Empty = not recorded (null). The hostname is recorded automatically as well")
+    shot_creator: StringProperty(name="Creator", default="", description="Empty = not recorded (null)")
+    shot_operator: StringProperty(name="Camera Operator", default="", description="Empty = not recorded (null)")
 
     # --- テイクのあとに流すコマンド (クラウドなどへの連携の口。hooks.py / INTEGRATION.md) ---
     hook_command: StringProperty(
-        name="コマンド",
-        description="テイクを録ったあと・書き出したあとに流すコマンド。{take_dir} {event} {render} {take_json} を"
-                    "置き換える (例: python3 ~/trkar_upload.py {take_dir} {event})。空なら何もしない")
-    hook_on_record: BoolProperty(name="録画を止めたら", default=True,
-                                 description="録画を止めたとき (event = recorded) にコマンドを流す")
-    hook_on_export: BoolProperty(name="書き出したら", default=True,
-                                 description="書き出しが終わったとき (event = exported) にコマンドを流す")
-    hook_timeout: IntProperty(name="打ち切り (分)", default=30, min=1, max=24 * 60,
-                              description="コマンドがこの時間で終わらなければ打ち切る")
+        name="Command",
+        description="Command to run after recording or exporting a take. Replaces {take_dir} {event} {render} {take_json} (e.g. python3 ~/trkar_upload.py {take_dir} {event}). Empty = do nothing")
+    hook_on_record: BoolProperty(name="After Recording Stops", default=True,
+                                 description="Run the command when recording stops (event = recorded)")
+    hook_on_export: BoolProperty(name="After Export", default=True,
+                                 description="Run the command when an export finishes (event = exported)")
+    hook_timeout: IntProperty(name="Timeout (min)", default=30, min=1, max=24 * 60,
+                              description="Stop the command if it does not finish within this time")
 
 
     def draw(self, _context):
+        self.layout.prop(self, "ui_language")
         self.layout.prop(self, "ndi_library_path")
         self.layout.prop(self, "show_sidebar")
         self.layout.prop(self, "matte_folder")
         box = self.layout.box()
-        box.label(text="撮影の来歴 (take.json)", icon="FILE_MOVIE")
+        box.label(text=_t("Shoot Provenance (take.json)"), icon="FILE_MOVIE")
         _draw_slate_settings(box, self)
         box = self.layout.box()
-        box.label(text="テイクのあとに流すコマンド (連携)", icon="SCRIPT")
+        box.label(text=_t("After-Take Command (Integration)"), icon="SCRIPT")
         _draw_hook_settings(box, self)
+
+
 
 
 class TRKAR_Settings(bpy.types.PropertyGroup):
     # --- 受信 (OSC) ---
-    port: IntProperty(name="OSC ポート", default=8000, min=1, max=65535,
-                      description="trkAR の SystemPC OSC Port と合わせる")
-    camera: PointerProperty(name="カメラ", type=bpy.types.Object, poll=_is_camera,
-                            description="動かすカメラ。空ならシーンのアクティブカメラ")
+    port: IntProperty(name="OSC Port", default=8000, min=1, max=65535,
+                      description="Match trkAR's SystemPC OSC Port")
+    camera: PointerProperty(name="Camera", type=bpy.types.Object, poll=_is_camera,
+                            description="Camera to move. Empty = the scene's active camera")
     camera_id_filter: IntProperty(name="Camera ID", default=-1, min=-1,
-                                  description="この trackingCameraID だけ受ける (-1 = すべて)")
+                                  description="Only receive this trackingCameraID (-1 = all)")
     client_id_filter: StringProperty(name="Client ID", default="",
-                                     description="この clientID だけ受ける (空 = すべて)")
+                                     description="Only receive this clientID (empty = all)")
     mode: EnumProperty(
-        name="基準",
+        name="Reference",
         items=(
-            ("RELATIVE", "カメラの現在位置", "受信開始時のカメラ位置・向きを基準に、iPhone が動いた分だけ動かす"),
-            ("ABSOLUTE", "iPhone の原点", "iPhone の座標をそのまま使う (オフセットで合わせる)"),
+            ("RELATIVE", "Current Camera Position", "Move the camera only as much as the iPhone moves, relative to the camera's position and rotation when receiving started"),
+            ("ABSOLUTE", "iPhone Origin", "Use the iPhone's coordinates as is (align with the offsets)"),
         ),
         default="RELATIVE",
         update=_reanchor_if_relative,
     )
     floor_from_iphone: BoolProperty(
-        name="高さは iPhone の床から", default=True, update=_reset_smoothing,
-        description="カメラの現在位置を基準にするときも、高さだけは iPhone が測った床からの高さを使う。"
-                    "実写の床と Blender の床 (床の高さ) が合う。iPhone で床が決まっているときだけ "
-                    "(SET GND か、床の平面が自動で見つかったとき)。オフなら高さも Blender のカメラから動いた分だけ")
+        name="Height from iPhone Floor", default=True, update=_reset_smoothing,
+        description="Even when using the current camera position as the reference, take only the height from the floor height measured by the iPhone. The video floor then matches the Blender floor (Floor Height). Only when the iPhone has a floor (SET GND, or a floor plane found automatically). Off = the height also moves only as much as it moved from the Blender camera")
     floor_z: FloatProperty(
-        name="床の高さ", default=0.0, subtype="DISTANCE", update=_reset_smoothing,
-        description="実写の床に合わせる Blender の床の高さ (ワールドの Z)。iPhone の原点のときは位置オフセットの Z")
-    scale: FloatProperty(name="スケール", default=1.0, min=0.001, soft_max=100.0,
-                         description="移動量の倍率 (1 = 実寸 1m が Blender の 1m)",
+        name="Floor Height", default=0.0, subtype="DISTANCE", update=_reset_smoothing,
+        description="Height of the Blender floor (world Z) to match the video floor. With iPhone Origin, this is the Z of Location Offset")
+    scale: FloatProperty(name="Scale", default=1.0, min=0.001, soft_max=100.0,
+                         description="Movement multiplier (1 = 1 m in the real world is 1 m in Blender)",
                          update=_reanchor_if_relative)
-    location_offset: FloatVectorProperty(name="位置オフセット", subtype="TRANSLATION", size=3,
+    location_offset: FloatVectorProperty(name="Location Offset", subtype="TRANSLATION", size=3,
                                          update=_reset_smoothing)
-    yaw_offset: FloatProperty(name="向きオフセット (Z)", default=0.0, soft_min=-180.0, soft_max=180.0,
-                              description="ワールド Z 軸まわりの回転 (度)", update=_reset_smoothing)
-    roll_offset: FloatProperty(name="ロール補正", default=0.0, soft_min=-180.0, soft_max=180.0,
-                               description="視線軸まわりの回転 (度)。trkAR の縦位置はアプリ側で補正済み",
+    yaw_offset: FloatProperty(name="Rotation Offset (Z)", default=0.0, soft_min=-180.0, soft_max=180.0,
+                              description="Rotation around the world Z axis (degrees)", update=_reset_smoothing)
+    roll_offset: FloatProperty(name="Roll Correction", default=0.0, soft_min=-180.0, soft_max=180.0,
+                               description="Rotation around the view axis (degrees). trkAR's portrait orientation is already corrected in the app",
                                update=_reset_smoothing)
-    smoothing: FloatProperty(name="スムージング", default=0.0, min=0.0, max=0.95,
-                             description="0 = 生データ。上げるほど滑らかだが遅れる")
-    pose_sync: BoolProperty(name="映像に合わせる", default=True,
-                            description="実写 (NDI 受信) を受けているとき、表示中の映像と同じ撮影時刻の姿勢を使う。"
-                                        "姿勢の方が先に届くので、そのままだと CG のカメラが実写より先に動く。"
-                                        "カメラは映像の遅れの分だけ遅れる")
-    pose_predict: BoolProperty(name="姿勢の遅れを予測で補う", default=True,
-                               description="Wi-Fi で姿勢が一瞬止まり、表示中の映像の撮影時刻の姿勢がまだ届いていないとき、"
-                                           "直前の動きから先を予測する (最大 %d ms)。切ると、そのあいだカメラは"
-                                           "最新の姿勢で止まり、届いた瞬間に飛ぶ" % int(tracking.PREDICT_LIMIT * 1000))
-    pose_sync_offset: FloatProperty(name="ずれ補正", default=0.0, min=-300.0, max=300.0, subtype="NONE",
-                                    description="+ でカメラをさらに遅らせる / − で早める (ms)。"
-                                                "揃えても CG が先に動くなら +")
-    sync_fov: BoolProperty(name="画角を同期", default=True,
-                           description="iPhone から届く水平 FOV をカメラに反映する")
-    use_rig: BoolProperty(name="iPhone のコントローラー", default=True,
-                          description="trkAR のジョイスティックで動かしたオフセット (/client/rig) を足す",
+    smoothing: FloatProperty(name="Smoothing", default=0.0, min=0.0, max=0.95,
+                             description="0 = raw data. Higher is smoother but adds delay")
+    pose_sync: BoolProperty(name="Sync to Video", default=True,
+                            description="While receiving live video (NDI), use the pose captured at the same time as the frame on screen. The pose arrives before the video, so otherwise the CG camera moves ahead of the video. The camera is delayed by the video latency")
+    pose_predict: BoolProperty(name="Predict Pose Latency", default=True,
+                               description="When the pose briefly stalls over Wi-Fi and the pose for the displayed frame's capture time has not arrived yet, predict ahead from the last movement (up to %d ms). Off = the camera holds the latest pose meanwhile and jumps when it arrives" % int(tracking.PREDICT_LIMIT * 1000))
+    pose_sync_offset: FloatProperty(name="Offset Correction", default=0.0, min=-300.0, max=300.0, subtype="NONE",
+                                    description="+ delays the camera further / − makes it earlier (ms). If the CG still moves first after syncing, use +")
+    sync_fov: BoolProperty(name="Sync Field of View", default=True,
+                           description="Apply the horizontal FOV sent from the iPhone to the camera")
+    use_rig: BoolProperty(name="iPhone Controller", default=True,
+                          description="Add the offset moved with the trkAR joystick (/client/rig)",
                           update=_reanchor_if_relative)
-    use_rig_lens: BoolProperty(name="iPhone のレンズ設定", default=True,
-                               description="trkAR の LENS パネルの焦点距離・F 値・フォーカス距離を反映する")
+    use_rig_lens: BoolProperty(name="iPhone Lens Settings", default=True,
+                               description="Apply the focal length, f-stop, and focus distance from trkAR's LENS panel")
     # --- Blender 側のオフセット (キーフレーム可) ---
-    ctl_location: FloatVectorProperty(name="移動", subtype="TRANSLATION", size=3,
-                                      description="カメラ位置に足す移動量 (ワールド座標)")
-    ctl_pan: FloatProperty(name="パン", default=0.0, soft_min=-180.0, soft_max=180.0,
-                           description="カメラ位置を軸にしたワールド Z まわりの回転 (度)")
-    ctl_tilt: FloatProperty(name="チルト", default=0.0, soft_min=-90.0, soft_max=90.0,
-                            description="カメラの左右軸まわりの回転 (度)。+ で上を向く")
-    ctl_roll: FloatProperty(name="ロール", default=0.0, soft_min=-180.0, soft_max=180.0,
-                            description="視線軸まわりの回転 (度)")
-    ctl_fstop: FloatProperty(name="F 値", default=0.0, min=-1.0, soft_max=22.0,
-                             description="被写界深度の F 値。0 = 上書きしない (iPhone のレンズ設定 / カメラの設定)、"
-                                         "-1 = 被写界深度を切る")
-    ctl_focus: FloatProperty(name="ピント距離", default=0.0, min=0.0, soft_max=50.0, unit="LENGTH",
-                             description="0 = 上書きしない。オートフォーカス (ピントを人の板に合わせる) が入っていればそちらが先")
+    ctl_location: FloatVectorProperty(name="Move", subtype="TRANSLATION", size=3,
+                                      description="Movement added to the camera position (world coordinates)")
+    ctl_pan: FloatProperty(name="Pan", default=0.0, soft_min=-180.0, soft_max=180.0,
+                           description="Rotation around world Z with the camera position as the pivot (degrees)")
+    ctl_tilt: FloatProperty(name="Tilt", default=0.0, soft_min=-90.0, soft_max=90.0,
+                            description="Rotation around the camera's left-right axis (degrees). + tilts up")
+    ctl_roll: FloatProperty(name="Roll", default=0.0, soft_min=-180.0, soft_max=180.0,
+                            description="Rotation around the view axis (degrees)")
+    ctl_fstop: FloatProperty(name="F-Stop", default=0.0, min=-1.0, soft_max=22.0,
+                             description="Depth of field f-stop. 0 = do not override (iPhone lens settings / camera settings), -1 = turn off depth of field")
+    ctl_focus: FloatProperty(name="Focus Distance", default=0.0, min=0.0, soft_max=50.0, unit="LENGTH",
+                             description="0 = do not override. Autofocus (Focus on Person Plate) takes priority when it is on")
     ctl_pan_shift: FloatVectorProperty(
-        name="パンの補正", subtype="TRANSLATION", size=3,
-        description="パンを変えた瞬間にカメラが跳ばないように足す位置 (自動。全部戻すで 0)")
-    ctl_lens: FloatProperty(name="焦点距離", default=0.0, min=0.0, soft_max=300.0,
-                            description="35mm 判換算 (mm)。0 = 上書きしない (iPhone のレンズ設定 / 画角の同期に従う)")
+        name="Pan Compensation", subtype="TRANSLATION", size=3,
+        description="Position added so the camera does not jump when the pan changes (automatic. \"Reset All\" sets it to 0)")
+    ctl_lens: FloatProperty(name="Focal Length", default=0.0, min=0.0, soft_max=300.0,
+                            description="35mm equivalent (mm). 0 = do not override (follows iPhone lens settings / field of view sync)")
     use_remote: BoolProperty(
-        name="別の端末から動かす (リモート)", default=True,
-        description="モニターの端末 (trkAR の CTL の TARGET でこのカメラの Camera ID を選んだもの) のスティックを、"
-                    "このオフセットに足す。レンズ (焦点距離・F 値・ピント) も、届いている間はその端末の設定を使う")
-    record: BoolProperty(name="再生中にキーフレーム記録", default=False,
-                         description="タイムライン再生中、受信した姿勢を毎フレーム記録する")
-    last_client_id: StringProperty(name="受信中の Client ID", default="")
+        name="Control from Another Device (Remote)", default=True,
+        description="Add the sticks of the monitor device (the one that selected this camera's Camera ID under TARGET in trkAR's CTL) to this offset. While it is sending, the lens (focal length, f-stop, focus) also uses that device's settings")
+    record: BoolProperty(name="Record Keyframes During Playback", default=False,
+                         description="Record the received pose every frame while the timeline plays")
+    last_client_id: StringProperty(name="Receiving Client ID", default="")
     rec_from_remote: BoolProperty(
-        name="iPhone の REC で録画", default=True,
-        description="trkAR (iPhone) の REC ボタンで、この REC の開始・停止をする。"
-                    "iPhone 側で 3・2・1 のカウントダウンが終わったときに開始の指示が届く")
+        name="Record with iPhone REC", default=True,
+        description="Start and stop this REC with the REC button in trkAR (iPhone). The start signal arrives when the 3-2-1 countdown on the iPhone ends")
 
     # --- 送出 (NDI) ---
-    ndi_name: StringProperty(name="NDI 名", default="Blender (trkAR)")
-    ndi_width: IntProperty(name="幅", default=1280, min=16, max=7680)
-    ndi_height: IntProperty(name="高さ", default=720, min=16, max=4320)
+    ndi_name: StringProperty(name="NDI Name", default="Blender (trkAR)")
+    ndi_width: IntProperty(name="Width", default=1280, min=16, max=7680)
+    ndi_height: IntProperty(name="Height", default=720, min=16, max=4320)
     ndi_fps: FloatProperty(name="FPS", default=30.0, min=1.0, max=60.0)
-    ndi_transparent: BoolProperty(name="背景を透過", default=False,
-                                  description="背景を描かずアルファ付きで送る (OBS で実写に重ねる用)")
+    ndi_transparent: BoolProperty(name="Transparent Background", default=False,
+                                  description="Send with alpha without drawing the background (for overlaying on video in OBS)")
 
     # --- 画面の送出 (NDI) ---
     # trkAR 受信の ▶ (まとめて開始) で、実写・深度も始めるか (カメラ追従はいつも始める)
-    receive_video: BoolProperty(name="実写も受ける", default=True,
-                                description="trkAR 受信の ▶ で、実写 (NDI) の受信も始める (ソースを選んでいるとき)")
-    receive_depth: BoolProperty(name="深度も受ける", default=False,
-                                description="trkAR 受信の ▶ で、深度の受信も始める")
+    receive_video: BoolProperty(name="Also Receive Video", default=True,
+                                description="The ▶ in trkAR Receive also starts receiving live video (NDI) (when a source is selected)")
+    receive_depth: BoolProperty(name="Also Receive Depth", default=False,
+                                description="The ▶ in trkAR Receive also starts receiving depth")
     # NDI 送出のパネルで選ぶ送るもの (どれも 1 つずつしか動かさない)
     ndi_out_mode: EnumProperty(
-        name="送るもの",
-        items=(("CAMERA", "カメラ視点", "追従カメラの視点をこのビューの表示モードで描いて送る (iPhone の MONI や OBS 用)"),
-               ("SCREEN_OS", "画面 (OS で取る)",
-                "Blender の画面を macOS の画面キャプチャで取って送る。シーンの fps が落ちにくい。"
-                "OS の合成を通る分だけ遅れが少し増える。macOS 14 以降、画面収録の許可が要る"),
-               ("SCREEN_BLENDER", "画面 (Blender で読む)",
-                "Blender の画面を Blender の中で読んで送る。遅れが小さいが、重いシーンでは GPU を待つので"
-                "シーンの fps が落ちる。Blender 5.3 以降")),
+        name="What to Send",
+        items=(("CAMERA", "Camera View", "Render the tracking camera's view in this view's shading mode and send it (for the iPhone's MONI or OBS)"),
+               ("SCREEN_OS", "Screen (OS Capture)",
+                "Capture the Blender screen with macOS screen capture and send it. The scene fps rarely drops. Latency increases slightly because it goes through OS compositing. macOS 14 or later needs Screen Recording permission"),
+               ("SCREEN_BLENDER", "Screen (Read in Blender)",
+                "Read the Blender screen inside Blender and send it. Lower latency, but in heavy scenes it waits for the GPU, so the scene fps drops. Blender 5.3 or later")),
         default="CAMERA")
-    screen_ndi_cursor: BoolProperty(name="マウスカーソルを映す", default=True,
-                                    description="画面 (OS で取る) のとき、マウスカーソルも送る")
-    screen_ndi_name: StringProperty(name="NDI 名", default="Blender Screen (trkAR)")
+    screen_ndi_cursor: BoolProperty(name="Show Mouse Cursor", default=True,
+                                    description="With Screen (OS Capture), also send the mouse cursor")
+    screen_ndi_name: StringProperty(name="NDI Name", default="Blender Screen (trkAR)")
     screen_ndi_target: EnumProperty(
-        name="範囲",
-        items=(("WINDOW", "ウィンドウ全体", "Blender のウィンドウ全体 (メニューやポップアップも含む)"),
-               ("AREA", "このエリアだけ", "送出開始を押したエリア (この 3D ビュー) だけ")),
+        name="Range",
+        items=(("WINDOW", "Whole Window", "The whole Blender window (including menus and pop-ups)"),
+               ("AREA", "This Area Only", "Only the area where Start Output was pressed (this 3D View)")),
         default="WINDOW")
     screen_ndi_fps: FloatProperty(name="FPS", default=30.0, min=1.0, max=60.0)
-    screen_ndi_half: BoolProperty(name="半分のサイズで送る", default=False,
-                                  description="縦横を半分にして送る (Retina や 4K の画面で重いとき)")
+    screen_ndi_half: BoolProperty(name="Send at Half Size", default=False,
+                                  description="Send at half width and height (when Retina or 4K screens are heavy)")
 
 
     # --- 受信 (NDI → シーン) ---
     ndi_in_camera_source: StringProperty(
-        name="切り抜く前のソース", default="",
-        description="RVM の切り抜きを始める前に受けていたソース (iPhone の trkAR)。切り抜きが動いていないのに "
-                    "切り抜きの映像が選ばれていたら、受信を始めるときにこちらへ戻す")
-    ndi_in_source: StringProperty(name="ソース", default="",
-                                  description="受ける NDI ソース名 (例: IPHONE (trkAR))")
+        name="Source Before Matting", default="",
+        description="The source received before RVM matting started (trkAR on the iPhone). If the matte video is selected while matting is not running, switch back to this when receiving starts")
+    ndi_in_source: StringProperty(name="Source", default="",
+                                  description="NDI source name to receive (e.g. IPHONE (trkAR))")
     ndi_in_lens_crop: BoolProperty(
-        name="レンズに合わせて切り出す", default=True,
-        description="実写の板・カメラ背景の大きさを iPhone の実際の画角で決める。CTL の LENS や Blender 側の"
-                    "焦点距離で望遠にすると、実写も CG と同じだけ中央が切り出される (広角にすると実写の外は映らない)。"
-                    "切ると今までどおりカメラの枠いっぱいに貼る")
+        name="Crop to Lens", default=True,
+        description="Size the video plate and camera background by the iPhone's actual field of view. When you zoom in with CTL's LENS or Blender's focal length, the video is cropped at the center just like the CG (zooming out shows nothing beyond the video). Off = fill the camera frame as before")
     ndi_in_front_distance: FloatProperty(
-        name="手前の距離", default=1.0, min=0.01, soft_max=20.0, unit="LENGTH",
-        description="`カメラの前に置く` の板をカメラからどれだけ前に置くか。これより奥の CG は板 (人) に隠れる")
+        name="Near Distance", default=1.0, min=0.01, soft_max=20.0, unit="LENGTH",
+        description="How far in front of the camera to place the \"Place in Front of Camera\" plate. CG behind this distance is hidden by the plate (person)")
     ndi_in_front_follow: BoolProperty(
-        name="人の距離に合わせる", default=False,
-        description="`カメラの前に置く` の板を、深度 (LiDAR / ARKit の推定深度) で測った人の距離に置く "
-                    "(人物マスクの所の深度の中央値)。CG のどれが人の前・後ろになるかが実際の位置に合う。"
-                    "深度を受けていないときや人が長く見えないときは `手前の距離` に置く")
+        name="Match Person Distance", default=False,
+        description="Places the \"Place in Front of Camera\" plate at the person's distance measured from depth (LiDAR / ARKit estimated depth; the median depth inside the person mask). Which CG is in front of or behind the person then matches the real position. When no depth is received or the person is not seen for a while, it is placed at \"Near Distance\"")
     dof_autofocus: BoolProperty(
-        name="ピントを人の板に合わせる", default=False,
-        description="追従カメラの被写界深度のピント距離を、`カメラの前に置く` の板の距離に合わせ続ける "
-                    "(`人の距離に合わせる` なら人の距離)。ボケの強さ (F 値) と被写界深度のオン・オフは、"
-                    "iPhone のコントローラーのレンズ設定かカメラの設定のまま")
+        name="Focus on Person Plate", default=False,
+        description="Keeps the tracked camera's depth-of-field focus distance at the distance of the \"Place in Front of Camera\" plate (the person's distance with \"Match Person Distance\"). Blur strength (f-stop) and depth of field on/off stay as set in the iPhone controller's lens settings or the camera settings")
     dof_autofocus_smoothing: FloatProperty(
-        name="ピントの追従", default=0.5, min=0.0, soft_max=3.0, subtype="TIME_ABSOLUTE", unit="TIME_ABSOLUTE",
-        description="ピントが板の距離に追いつくまでのおよその時間 (秒)。人の距離の細かな揺れでピントが前後に"
-                    "暴れないようにならす。0 で板の距離にそのまま合わせる")
+        name="Focus Follow", default=0.5, min=0.0, soft_max=3.0, subtype="TIME_ABSOLUTE", unit="TIME_ABSOLUTE",
+        description="Approximate time (seconds) for the focus to catch up to the plate distance. Smooths out small jitter in the person's distance so the focus does not hunt back and forth. 0 matches the plate distance directly")
     matte_model: EnumProperty(
-        name="RVM モデル",
-        items=(("720", "720 (速い)", "Apple M4 で約 17ms"), ("1080", "1080 (細かい)", "Apple M4 で約 25ms")),
+        name="RVM Model",
+        items=(("720", "720 (Fast)", "About 17ms on Apple M4"), ("1080", "1080 (Detailed)", "About 25ms on Apple M4")),
         default="720",
     )
     # 公開版は中継を入れていない人が多いので既定はオフ (入れていないと受信のたびに警告が出る)
     receive_matte: BoolProperty(
-        name="受信開始で切り抜きも始める", default=STUDIO,
-        description="trkAR 受信の ▶ で実写を受けるとき、RVM の切り抜きも始めて、切り抜いた映像 (trkAR Matte) を受ける")
-    ndi_in_low: BoolProperty(name="低解像度で受ける", default=False,
-                             description="NDI のプレビュー用ストリームを受ける (軽いが解像度が下がる)")
+        name="Start Matte on Receive", default=STUDIO,
+        description="When receiving video with ▶ in trkAR Receive, also start the RVM matte and receive the matted video (trkAR Matte)")
+    ndi_in_low: BoolProperty(name="Receive Low Resolution", default=False,
+                             description="Receive the NDI preview stream (lighter, but lower resolution)")
     ndi_in_auto_screen: BoolProperty(
-        name="受信開始で板を置く", default=True,
-        description="実写の受信を始めたとき、受けた映像を映すもの (板・スクリーン・深度スクリーン・カメラの背景・"
-                    "映像を使うマテリアル) が何も無ければ、カメラの前に板を置く (「カメラの前に置く」と同じ)")
+        name="Place Plate on Receive", default=True,
+        description="When video receiving starts and nothing shows the received video (plate, screen, depth screen, camera background, or a material using the video), place a plate in front of the camera (same as \"Place in Front of Camera\")")
 
 
     # --- 受信 (LiDAR 深度 → 立体スクリーン) ---
     depth_transport: EnumProperty(
-        name="受け方",
-        items=(("UDP", "UDP (無圧縮)", "trkAR が SystemPC IP の 9100 番へ送る無圧縮の深度。綺麗"),
-               ("NDI", "NDI", "NDI の trkAR-Depth。NDI の圧縮で荒れやすい")),
+        name="Receive Method",
+        items=(("UDP", "UDP (Uncompressed)", "Uncompressed depth that trkAR sends to port 9100 on the SystemPC IP. Clean"),
+               ("NDI", "NDI", "trkAR-Depth over NDI. NDI compression tends to make it noisy")),
         default="UDP")
-    depth_udp_port: IntProperty(name="UDP ポート", default=depth_input.UDP_DEFAULT_PORT, min=1, max=65535)
-    depth_source: StringProperty(name="深度ソース", default="",
-                                 description="trkAR の深度 NDI ソース (例: IPHONE (trkAR-Depth))")
+    depth_udp_port: IntProperty(name="UDP Port", default=depth_input.UDP_DEFAULT_PORT, min=1, max=65535)
+    depth_source: StringProperty(name="Depth Source", default="",
+                                 description="trkAR depth NDI source (e.g. IPHONE (trkAR-Depth))")
     depth_step: EnumProperty(
-        name="間引き",
-        items=(("1", "1 (最細)", "LiDAR の全画素 (256×144 頂点)"),
-               ("2", "1/2", "縦横 1/2"),
-               ("4", "1/4", "縦横 1/4 (軽い)")),
+        name="Decimation",
+        items=(("1", "1 (Finest)", "Every LiDAR pixel (256×144 vertices)"),
+               ("2", "1/2", "1/2 horizontally and vertically"),
+               ("4", "1/4", "1/4 horizontally and vertically (light)")),
         default="2",
     )
-    depth_max_distance: FloatProperty(name="最大距離", default=5.0, min=0.1, max=6.5, unit="LENGTH",
-                                      description="これより遠い画素は透明にする (実寸 m)")
+    depth_max_distance: FloatProperty(name="Max Distance", default=5.0, min=0.1, max=6.5, unit="LENGTH",
+                                      description="Pixels farther than this become transparent (real-world m)")
     depth_confidence: EnumProperty(
-        name="信頼度",
-        items=(("0", "すべて", "信頼度 low も使う (ノイズが多い)"),
-               ("1", "中以上", "信頼度 medium 以上"),
-               ("2", "高のみ", "信頼度 high だけ")),
+        name="Confidence",
+        items=(("0", "All", "Also use low confidence (noisy)"),
+               ("1", "Medium and Above", "Confidence medium and above"),
+               ("2", "High Only", "Confidence high only")),
         default="1",
     )
     depth_people: EnumProperty(
-        name="人物",
-        items=(("OFF", "使わない", "人物マスクを使わない (深度の段差だけで切る)"),
-               ("EDGE", "人の輪郭で切る", "全部表示し、人と背景の境目は ARKit の人物マスクで切る"),
-               ("ONLY", "人だけ", "ARKit が人と判定した所だけ表示する")),
+        name="Person",
+        items=(("OFF", "Off", "Do not use the person mask (cut only at depth steps)"),
+               ("EDGE", "Cut at Person Outline", "Show everything, and cut the boundary between person and background with the ARKit person mask"),
+               ("ONLY", "Person Only", "Show only where ARKit detects a person")),
         default="EDGE",
-        description="ARKit の人物セグメンテーション (UDP で受けているときだけ)")
+        description="ARKit person segmentation (only when receiving over UDP)")
     depth_person_distance: FloatProperty(
-        name="人の距離", default=2.0, min=0.1, max=8.0, unit="LENGTH",
-        description="深度の取れない機種 (iPad mini など) で人物マスクだけ来ているとき、"
-                    "ARKit の推定深度も無い人の画素を置く距離 (実寸 m)")
+        name="Person Distance", default=2.0, min=0.1, max=8.0, unit="LENGTH",
+        description="On devices without depth (iPad mini etc.) that send only the person mask, the distance at which to place person pixels that have no ARKit estimated depth either (real-world m)")
     depth_flat_cutout: BoolProperty(
-        name="人物マスクで平面カットアウト",
-        description="深度メッシュ (立体) を使わず、ARKit の人物マスクを実写 NDI 映像 (trkAR NDI) の"
-                    "アルファにそのまま使う。RVM が重すぎる PC でも、深度の奥行きは無視して"
-                    "「NDI 映像をシーンに取り込む」の平面 (スクリーンを置く / カメラの前に置く) で"
-                    "人物だけ切り抜ける (UDP 受信中のみ、深度スクリーンは不要)",
+        name="Flat Cutout with Person Mask",
+        description="Instead of the depth mesh (3D), use the ARKit person mask directly as the alpha of the live NDI video (trkAR NDI). Even on PCs too slow for RVM, you can cut out just the person on the flat planes of \"Bring NDI Video into Scene\" (Place Screen / Place in Front of Camera), ignoring depth (only while receiving over UDP; no depth screen needed)",
         default=False)
     depth_background: BoolProperty(
-        name="背景の板",
-        description="人の後ろに実写を貼った板を置く。人の居ない所 (深度の無い機種では人以外の全部) はこれが見える。"
-                    "CG を人と背景の間に入れられる",
+        name="Background Plate",
+        description="Places a plate with the live video behind the person. It shows where there is no person (on devices without depth, everything except the person). Lets you put CG between the person and the background",
         default=False)
     depth_background_distance: FloatProperty(
-        name="背景の距離", default=4.0, min=0.1, soft_max=20.0, unit="LENGTH",
-        description="背景の板を置くカメラからの距離 (実寸。トラッキングのスケールが掛かる)")
+        name="Background Distance", default=4.0, min=0.1, soft_max=20.0, unit="LENGTH",
+        description="Distance from the camera at which to place the background plate (real-world; tracking scale applies)")
     take_folder: StringProperty(
-        name="保存先", default="", subtype="DIR_PATH",
-        description="テイクを置くフォルダ (テイクごとにサブフォルダを作る)。空なら .blend の隣の trkar_takes "
-                    "(保存していない .blend では ~/Movies/trkAR Takes)")
-    take_path: StringProperty(name="テイク", subtype="DIR_PATH",
-                              description="再生・書き出し・生成するテイクのフォルダ (REC すると最新になる)。"
-                                          "再生中に選び直すと、そのテイクを読み直す",
+        name="Save To", default="", subtype="DIR_PATH",
+        description="Folder for takes (a subfolder is created per take). If empty, trkar_takes next to the .blend (~/Movies/trkAR Takes for an unsaved .blend)")
+    take_path: StringProperty(name="Take", subtype="DIR_PATH",
+                              description="Folder of the take to play, export, or generate (REC sets it to the latest). Choosing another during playback reloads that take",
                               update=_take_path_update)
     take_fps: EnumProperty(
-        name="収録 FPS",
-        items=(("24", "24 fps", "動画生成 (LTX / H3 など) に合わせる。実写 (30fps) は 24fps で拾い直す"),
-               ("30", "30 fps", "iPhone の実写と同じ"),
-               ("SCENE", "シーンのまま", "出力のフレームレートを変えない")),
+        name="Recording FPS",
+        items=(("24", "24 fps", "Matches video generation (LTX / H3 etc.). Live video (30fps) is resampled at 24fps"),
+               ("30", "30 fps", "Same as the iPhone live video"),
+               ("SCENE", "Keep Scene", "Do not change the output frame rate")),
         default="24")
     take_prep_long_side: IntProperty(
-        name="長い辺", default=960, min=256, max=2048, step=16,
-        description="生成用の素材 (参照の動画) の長い辺の画素数。縦横比はシーンの出力のまま (16 の倍数にそろえる)")
+        name="Long Side", default=960, min=256, max=2048, step=16,
+        description="Long side in pixels of the generation inputs (reference video). Aspect ratio follows the scene output (rounded to a multiple of 16)")
     take_prep_layout: BoolProperty(
-        name="場所のレイアウト", default=True,
-        description="人の立ち位置から前後左右を見た 4 枚 (layout.png) も作る (少し時間がかかる)")
+        name="Location Layout", default=True,
+        description="Also make 4 views (layout.png) looking front, back, left, and right from the person's position (takes a little time)")
     take_render_size: EnumProperty(
-        name="解像度",
-        items=(("SCENE", "シーンの出力", "シーンの出力の解像度で書き出す"),
-               ("LTX", "LTX (896×512)", "長辺 896・短辺 512 (128 の倍数)。縦長のシーンなら 512×896"),
-               ("H3", "H3 (960×544)", "MiniMax-H3 の生成解像度 (32 の倍数)。縦長のシーンなら 544×960")),
+        name="Resolution",
+        items=(("SCENE", "Scene Output", "Export at the scene output resolution"),
+               ("LTX", "LTX (896×512)", "Long side 896, short side 512 (multiples of 128). 512×896 for a portrait scene"),
+               ("H3", "H3 (960×544)", "MiniMax-H3 generation resolution (multiples of 32). 544×960 for a portrait scene")),
         default="SCENE")
     take_use_range: BoolProperty(
-        name="範囲", default=False, update=_take_range_update,
-        description="テイクの一部 (開始〜終了フレーム) だけを書き出す・送る。再生中はタイムラインの in / out にも入る。"
-                    "切ると全体")
-    take_range_start: IntProperty(name="開始", default=0, min=0, update=_take_range_update,
-                                  description="書き出す最初のフレーム (テイクのフレーム番号)")
-    take_range_end: IntProperty(name="終了", default=120, min=0, update=_take_range_update,
-                                description="書き出す最後のフレーム (この番号も含む)")
+        name="Range", default=False, update=_take_range_update,
+        description="Export or send only part of the take (start to end frame). During playback it is also set as the timeline in / out. Off for the whole take")
+    take_range_start: IntProperty(name="Start", default=0, min=0, update=_take_range_update,
+                                  description="First frame to export (timeline number = background CG time)")
+    take_range_end: IntProperty(name="End", default=120, min=0, update=_take_range_update,
+                                description="Last frame to export (inclusive)")
+    take_time_offset: IntProperty(
+        name="CG Time Offset", default=0, update=_take_offset_update,
+        description="How many frames to shift the playing take relative to the background CG time (+ shifts later). Saved per take in take.json, and also applies to export, generation inputs, and sending cuts (clay input)")
     take_range_mode: EnumProperty(
-        name="範囲の決め方", update=_take_range_update,
-        items=(("END", "終了フレーム", "開始と終了のフレームで決める"),
-               ("DURATION", "尺 (秒)", "開始フレームと長さ (秒) で決める。終了はシーンの fps から自動で決まる")),
+        name="Range Mode", update=_take_range_update,
+        items=(("END", "End Frame", "Set by start and end frames"),
+               ("DURATION", "Duration (Seconds)", "Set by start frame and length (seconds). The end is set automatically from the scene fps")),
         default="END")
     take_range_seconds: FloatProperty(
-        name="尺", default=5.0, min=0.05, soft_max=60.0, step=50, precision=2, update=_take_range_update,
-        description="開始フレームから書き出す長さ (秒)。フレーム数 = 秒 × fps (端数は四捨五入)")
+        name="Duration", default=5.0, min=0.05, soft_max=60.0, step=50, precision=2, update=_take_range_update,
+        description="Length to export from the start frame (seconds). Frames = seconds × fps (rounded)")
     take_render_samples: IntProperty(
-        name="サンプル数", default=0, min=0, max=256,
-        description=("ビューポートで書き出すときの EEVEE のサンプル数。0 ならシーンのまま (ビューポートのサンプル数)。"
-                     "下げるほど速い (重いシーンで 4〜8 にすると数倍速くなる)"))
+        name="Samples", default=0, min=0, max=256,
+        description=("EEVEE samples when exporting from the viewport. 0 keeps the scene setting (viewport samples). Lower is faster (4 to 8 makes heavy scenes several times faster)"))
     take_render_mode: EnumProperty(
-        name="書き出し",
-        items=(("VIEWPORT", "ビューポート", "3D ビューの見た目 (シェーディング) のまま書き出す。速い"),
-               ("RENDER", "レンダー", "シーンのレンダーエンジン (EEVEE / Cycles) で書き出す")),
+        name="Export",
+        items=(("VIEWPORT", "Viewport", "Export as the 3D view looks (shading). Fast"),
+               ("RENDER", "Render", "Export with the scene render engine (EEVEE / Cycles)")),
         default="VIEWPORT")
     take_render_format: EnumProperty(
-        name="形式",
-        items=(("MP4", "MP4 (H.264)", "<テイク>/render.mp4 (控えに render_<.blend の名前>.mp4)。動画生成 (Griptape / ComfyUI など) にそのまま渡せる。アルファなし"),
-               ("PNG", "PNG 連番", "<テイク>/render/0001.png … (控えに render_<.blend の名前>/)。アルファ付き (背景を透過にしたとき)")),
+        name="Format",
+        items=(("MP4", "MP4 (H.264)", "<take>/render.mp4 (backup copy as render_<.blend name>.mp4). Can go straight into video generation (Griptape / ComfyUI etc.). No alpha"),
+               ("PNG", "PNG Sequence", "<take>/render/0001.png … (backup copy in render_<.blend name>/). With alpha (when the background is transparent)")),
         default="MP4")
-    bridge_port: IntProperty(name="ポート", default=bridge.DEFAULT_PORT, min=1024, max=65535,
-                             description="通信ポートの番号 (127.0.0.1 だけで受ける)")
-    depth_edge_shift: FloatProperty(name="エッジ位置", default=0.0, min=-1.0, max=1.0,
-                                    description="+ で輪郭を外へ広げる / − で内側へ削る (数画素ぶん)",
+    bridge_port: IntProperty(name="Port", default=bridge.DEFAULT_PORT, min=1024, max=65535,
+                             description="Automation Port number (listens on 127.0.0.1 only)")
+    depth_edge_shift: FloatProperty(name="Edge Position", default=0.0, min=-1.0, max=1.0,
+                                    description="+ expands the outline outward / − trims it inward (a few pixels)",
                                     update=_update_depth_edge)
-    depth_edge_feather: FloatProperty(name="エッジのぼかし", default=0.3, min=0.0, max=1.0,
-                                      subtype="FACTOR", description="0 = くっきり、上げるほど輪郭が柔らかく透ける",
+    depth_edge_feather: FloatProperty(name="Edge Feather", default=0.3, min=0.0, max=1.0,
+                                      subtype="FACTOR", description="0 = sharp; higher makes the outline softer and more see-through",
                                       update=_update_depth_edge)
-    depth_denoise: BoolProperty(name="ノイズ除去", default=True,
-                                description="深度に 3×3 のメディアンをかける (境目はまたがない)")
-    depth_temporal: FloatProperty(name="時間スムージング", default=0.5, min=0.0, max=0.95,
-                                  description="前のフレームと混ぜてちらつきを抑える (大きく動いた所は混ぜない)")
-    depth_sync: BoolProperty(name="映像に合わせる", default=True,
-                             description="深度を実写 (NDI 受信) と同じ撮影時刻のものに揃えて出す。"
-                                         "深度の方が先に届くので、そのままだと輪郭が映像より先に動く")
-    depth_sync_offset: FloatProperty(name="ずれ補正", default=0.0, min=-300.0, max=300.0, subtype="NONE",
-                                     description="+ で深度をさらに遅らせる / − で早める (ms)。"
-                                                 "揃えても輪郭が先に動くなら +")
-    depth_edge_tolerance: FloatProperty(name="段差の許容", default=0.1, min=0.0, soft_max=1.0,
+    edge_style: EnumProperty(
+        name="Edge Style",
+        items=(("SHARP", "Sharp", "Narrows the semi-transparent band to stop grainy dots scattering on the outline while receiving (the outline gets slightly jagged)"),
+               ("SOFT", "Soft", "Draws semi-transparency as is (keeps see-through hair, but dots scatter on the outline while receiving)")),
+        default="SHARP", update=_update_depth_edge)
+    edge_sharp_width: FloatProperty(
+        name="Edge Width", default=0.2, min=0.02, max=1.0, subtype="FACTOR", update=_update_depth_edge,
+        description="Semi-transparent width kept in Sharp mode. Smaller gives no dots but jagged edges; larger is smoother but shows dots")
+    depth_denoise: BoolProperty(name="Denoise", default=True,
+                                description="Apply a 3×3 median to the depth (does not cross boundaries)")
+    depth_temporal: FloatProperty(name="Temporal Smoothing", default=0.5, min=0.0, max=0.95,
+                                  description="Blend with the previous frame to reduce flicker (areas with large motion are not blended)")
+    depth_sync: BoolProperty(name="Sync to Video", default=True,
+                             description="Output the depth captured at the same time as the live video (NDI receive). Depth arrives earlier, so without this the outline moves ahead of the video")
+    depth_sync_offset: FloatProperty(name="Sync Offset", default=0.0, min=-300.0, max=300.0, subtype="NONE",
+                                     description="+ delays the depth further / − makes it earlier (ms). If the outline still moves ahead after syncing, use +")
+    depth_edge_tolerance: FloatProperty(name="Step Tolerance", default=0.1, min=0.0, soft_max=1.0,
                                         subtype="FACTOR",
-                                        description="面の 4 隅の距離がこの割合以上違う面は透明にする "
-                                                    "(手前と奥の間に膜を張らない)")
+                                        description="Make faces transparent when the distances of their 4 corners differ by this ratio or more (no membrane between near and far)")
 
 
 class TRKAR_OT_tracking_start(bpy.types.Operator):
     bl_idname = "trkar.tracking_start"
-    bl_label = "受信開始"
-    bl_description = "trkAR からの OSC を受けてカメラを動かす"
+    bl_label = "Start Receiving"
+    bl_description = "Receive OSC from trkAR and move the camera"
 
     def execute(self, context):
         settings = context.scene.trkar
         camera = settings.camera or context.scene.camera
         if camera is None:
-            self.report({"ERROR"}, "カメラを指定するか、シーンにカメラを置いてください")
+            self.report({"ERROR"}, _t("Specify a camera, or add a camera to the scene"))
             return {"CANCELLED"}
         # オイラーだと分解時に ±180° で跳ねてキーフレーム補間が暴れるため
         camera.rotation_mode = "QUATERNION"
         try:
             tracking.start(settings.port, camera)
         except OSError as exc:
-            self.report({"ERROR"}, "ポート %d を開けません: %s" % (settings.port, exc))
+            self.report({"ERROR"}, _t("Cannot open port %d: %s") % (settings.port, exc))
             return {"CANCELLED"}
         return {"FINISHED"}
 
 
 class TRKAR_OT_tracking_stop(bpy.types.Operator):
     bl_idname = "trkar.tracking_stop"
-    bl_label = "受信停止"
+    bl_label = "Stop Receiving"
 
     def execute(self, _context):
         tracking.stop()
@@ -504,21 +539,21 @@ class TRKAR_OT_tracking_stop(bpy.types.Operator):
 
 class TRKAR_OT_copy_ip(bpy.types.Operator):
     bl_idname = "trkar.copy_ip"
-    bl_label = "IP をコピー"
-    bl_description = "この IP をクリップボードへ (iPhone の SystemPC IP に入れる)"
+    bl_label = "Copy IP"
+    bl_description = "Copy this IP to the clipboard (enter it as SystemPC IP on the iPhone)"
 
     ip: StringProperty()
 
     def execute(self, context):
         context.window_manager.clipboard = self.ip
-        self.report({"INFO"}, "%s をコピーしました" % self.ip)
+        self.report({"INFO"}, _t("Copied %s") % self.ip)
         return {"FINISHED"}
 
 
 class TRKAR_OT_reanchor(bpy.types.Operator):
     bl_idname = "trkar.reanchor"
-    bl_label = "ここを基準にし直す"
-    bl_description = "今のカメラ位置と iPhone の姿勢を基準に取り直す (iPhone を持ち直したときなど)"
+    bl_label = "Reset Reference Here"
+    bl_description = "Take the current camera position and iPhone pose as the new reference (e.g. after re-gripping the iPhone)"
 
     def execute(self, context):
         settings = context.scene.trkar
@@ -528,13 +563,13 @@ class TRKAR_OT_reanchor(bpy.types.Operator):
 
 class TRKAR_OT_align_to_cursor(bpy.types.Operator):
     bl_idname = "trkar.align_to_cursor"
-    bl_label = "現在位置を 3D カーソルへ"
-    bl_description = "今の iPhone の水平位置が 3D カーソルに来るよう位置オフセットを決める (高さは維持)"
+    bl_label = "Current Position to 3D Cursor"
+    bl_description = "Set the location offset so the iPhone's current horizontal position is at the 3D cursor (height is kept)"
 
     def execute(self, context):
         raw = tracking.last_raw_location()
         if raw is None:
-            self.report({"ERROR"}, "まだ姿勢を受信していません")
+            self.report({"ERROR"}, _t("No pose received yet"))
             return {"CANCELLED"}
         settings = context.scene.trkar
         yaw = Matrix.Rotation(math.radians(settings.yaw_offset), 3, "Z")
@@ -549,11 +584,11 @@ class TRKAR_OT_align_to_cursor(bpy.types.Operator):
 
 class TRKAR_OT_ctl_reset(bpy.types.Operator):
     bl_idname = "trkar.ctl_reset"
-    bl_label = "オフセットを戻す"
-    bl_description = "Blender 側のオフセットを 0 に戻す"
+    bl_label = "Reset Offset"
+    bl_description = "Reset the Blender-side offset to 0"
     bl_options = {"REGISTER", "UNDO"}
 
-    target: EnumProperty(items=(("ROTATION", "向き", ""), ("ALL", "すべて", "")), default="ALL")
+    target: EnumProperty(items=(("ROTATION", "Rotation", ""), ("ALL", "All", "")), default="ALL")
 
     def execute(self, context):
         settings = context.scene.trkar
@@ -567,8 +602,8 @@ class TRKAR_OT_ctl_reset(bpy.types.Operator):
 
 class TRKAR_OT_ctl_keyframe(bpy.types.Operator):
     bl_idname = "trkar.ctl_keyframe"
-    bl_label = "キーを打つ"
-    bl_description = "今のフレームに Blender 側のオフセットのキーフレームを打つ"
+    bl_label = "Insert Keyframe"
+    bl_description = "Insert a keyframe for the Blender-side offset at the current frame"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -580,8 +615,8 @@ class TRKAR_OT_ctl_keyframe(bpy.types.Operator):
 
 class TRKAR_OT_ndi_swap_size(bpy.types.Operator):
     bl_idname = "trkar.ndi_swap_size"
-    bl_label = "縦横を入れ替え"
-    bl_description = "送出解像度の幅と高さを入れ替える (trkAR の縦位置 9:16 に合わせる)"
+    bl_label = "Swap Width/Height"
+    bl_description = "Swap the width and height of the output resolution (to match trkAR's 9:16 portrait)"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -592,8 +627,8 @@ class TRKAR_OT_ndi_swap_size(bpy.types.Operator):
 
 class TRKAR_OT_ndi_start(bpy.types.Operator):
     bl_idname = "trkar.ndi_start"
-    bl_label = "NDI 送出開始"
-    bl_description = "このビューのシェーディング設定でカメラ視点を描画し NDI で送り出す"
+    bl_label = "Start NDI Output"
+    bl_description = "Render the camera view with this view's shading settings and output it over NDI"
 
     @classmethod
     def poll(cls, context):
@@ -620,7 +655,7 @@ class TRKAR_OT_ndi_start(bpy.types.Operator):
 
 class TRKAR_OT_ndi_stop(bpy.types.Operator):
     bl_idname = "trkar.ndi_stop"
-    bl_label = "NDI 送出停止"
+    bl_label = "Stop NDI Output"
 
     def execute(self, _context):
         ndi_output.stop()
@@ -629,13 +664,13 @@ class TRKAR_OT_ndi_stop(bpy.types.Operator):
 
 class TRKAR_OT_screen_ndi_start(bpy.types.Operator):
     bl_idname = "trkar.screen_ndi_start"
-    bl_label = "画面の NDI 送出開始"
-    bl_description = "Blender の画面に映っているもの (ウィンドウ全体かこのエリア) をそのまま NDI で送り出す"
+    bl_label = "Start Screen NDI Output"
+    bl_description = "Output what is shown on the Blender screen (the whole window or this area) over NDI as is"
 
     @classmethod
     def poll(cls, context):
         if not screen_output.supported():
-            cls.poll_message_set("Blender 5.3 以降が必要です")
+            cls.poll_message_set(_t("Requires Blender 5.3 or later"))
             return False
         return context.window is not None
 
@@ -643,7 +678,7 @@ class TRKAR_OT_screen_ndi_start(bpy.types.Operator):
         settings = context.scene.trkar
         area = _view3d(context)[1] if settings.screen_ndi_target == "AREA" else None
         if settings.screen_ndi_target == "AREA" and area is None:
-            self.report({"ERROR"}, "送るエリアがありません")
+            self.report({"ERROR"}, _t("No area to output"))
             return {"CANCELLED"}
         try:
             screen_out.start(
@@ -663,13 +698,13 @@ class TRKAR_OT_screen_ndi_start(bpy.types.Operator):
 
 class TRKAR_OT_os_screen_ndi_start(bpy.types.Operator):
     bl_idname = "trkar.os_screen_ndi_start"
-    bl_label = "画面の NDI 送出開始 (OS で取る)"
-    bl_description = "Blender の画面 (ウィンドウ全体かこのエリア) を macOS の画面キャプチャで取って NDI で送る"
+    bl_label = "Start Screen NDI Output (OS Capture)"
+    bl_description = "Capture the Blender screen (the whole window or this area) with macOS screen capture and output it over NDI"
 
     @classmethod
     def poll(cls, context):
         if not os_screen.supported():
-            cls.poll_message_set("macOS 14 以降で使えます")
+            cls.poll_message_set(_t("Available on macOS 14 or later"))
             return False
         return context.window is not None
 
@@ -677,7 +712,7 @@ class TRKAR_OT_os_screen_ndi_start(bpy.types.Operator):
         settings = context.scene.trkar
         area = _view3d(context)[1] if settings.screen_ndi_target == "AREA" else None
         if settings.screen_ndi_target == "AREA" and area is None:
-            self.report({"ERROR"}, "送るエリアがありません")
+            self.report({"ERROR"}, _t("No area to output"))
             return {"CANCELLED"}
         try:
             os_screen_out.start(context.window, area, settings.screen_ndi_name, settings.screen_ndi_fps,
@@ -691,8 +726,8 @@ class TRKAR_OT_os_screen_ndi_start(bpy.types.Operator):
 
 class TRKAR_OT_receive_start(bpy.types.Operator):
     bl_idname = "trkar.receive_start"
-    bl_label = "trkAR 受信開始"
-    bl_description = "カメラ追従 (OSC) と、チェックの入った実写 (NDI)・深度の受信をまとめて始める"
+    bl_label = "Start trkAR Receiving"
+    bl_description = "Start Camera Tracking (OSC) together with receiving the checked live video (NDI) and depth"
 
     def execute(self, context):
         settings = context.scene.trkar
@@ -724,14 +759,14 @@ def _start_video_with_matte(operator, context):
         bpy.ops.trkar.matte_start()
     except RuntimeError as exc:
         # 切り抜きを始められなくても (中継のフォルダが無いなど)、実写はそのまま受ける
-        operator.report({"WARNING"}, "切り抜きを始められないので、切り抜かずに受けます: %s" % exc)
+        operator.report({"WARNING"}, _t("Cannot start matting, so receiving without matte: %s") % exc)
         bpy.ops.trkar.ndi_in_start()
 
 
 class TRKAR_OT_receive_stop(bpy.types.Operator):
     bl_idname = "trkar.receive_stop"
-    bl_label = "trkAR 受信停止"
-    bl_description = "カメラ追従・実写・深度・切り抜きの受信をまとめて止める"
+    bl_label = "Stop trkAR Receiving"
+    bl_description = "Stop receiving Camera Tracking, live video, depth, and matte all at once"
 
     def execute(self, context):
         if matte_relay.running or bpy.app.timers.is_registered(_switch_to_matte):
@@ -746,21 +781,21 @@ class TRKAR_OT_receive_stop(bpy.types.Operator):
 
 class TRKAR_OT_ndi_out_start(bpy.types.Operator):
     bl_idname = "trkar.ndi_out_start"
-    bl_label = "NDI 送出開始"
-    bl_description = "NDI 送出のパネルで選んだもの (カメラ視点 / 画面) を送り出す"
+    bl_label = "Start NDI Output"
+    bl_description = "Output what is selected in the NDI Output panel (camera view / screen)"
 
     def execute(self, context):
         operator = {"CAMERA": bpy.ops.trkar.ndi_start, "SCREEN_OS": bpy.ops.trkar.os_screen_ndi_start,
                     "SCREEN_BLENDER": bpy.ops.trkar.screen_ndi_start}[context.scene.trkar.ndi_out_mode]
         if not operator.poll():
-            self.report({"ERROR"}, "ここからは開始できません (3D ビューのサイドバーから押す。対応する版も確かめる)")
+            self.report({"ERROR"}, _t("Cannot start from here (press it from the 3D View sidebar, and check the supported version)"))
             return {"CANCELLED"}
         return operator()
 
 
 class TRKAR_OT_ndi_out_stop(bpy.types.Operator):
     bl_idname = "trkar.ndi_out_stop"
-    bl_label = "NDI 送出停止"
+    bl_label = "Stop NDI Output"
 
     def execute(self, _context):
         ndi_output.stop()
@@ -775,7 +810,7 @@ def _ndi_out_running():
 
 class TRKAR_OT_screen_ndi_stop(bpy.types.Operator):
     bl_idname = "trkar.screen_ndi_stop"
-    bl_label = "画面の NDI 送出停止"
+    bl_label = "Stop Screen NDI Output"
 
     def execute(self, _context):
         screen_out.stop()
@@ -796,7 +831,7 @@ def _draw_sources(layout, context, target):
         layout.label(text=str(exc).splitlines()[0], icon="ERROR")
         return
     if not names:
-        layout.label(text="見つかりません (数秒待って開き直す)", icon="INFO")
+        layout.label(text=_t("Not found (wait a few seconds and reopen)"), icon="INFO")
     for name in names:
         op = layout.operator("trkar.ndi_in_set_source", text=name)
         op.name = name
@@ -805,7 +840,7 @@ def _draw_sources(layout, context, target):
 
 class TRKAR_MT_ndi_sources(bpy.types.Menu):
     bl_idname = "TRKAR_MT_ndi_sources"
-    bl_label = "NDI ソース"
+    bl_label = "NDI Source"
 
     def draw(self, context):
         _draw_sources(self.layout, context, "ndi_in_source")
@@ -813,7 +848,7 @@ class TRKAR_MT_ndi_sources(bpy.types.Menu):
 
 class TRKAR_MT_depth_sources(bpy.types.Menu):
     bl_idname = "TRKAR_MT_depth_sources"
-    bl_label = "深度 NDI ソース"
+    bl_label = "Depth NDI Source"
 
     def draw(self, context):
         _draw_sources(self.layout, context, "depth_source")
@@ -821,7 +856,7 @@ class TRKAR_MT_depth_sources(bpy.types.Menu):
 
 class TRKAR_OT_ndi_in_set_source(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_set_source"
-    bl_label = "NDI ソースを選ぶ"
+    bl_label = "Select NDI Source"
     bl_options = {"INTERNAL"}
 
     name: StringProperty()
@@ -860,23 +895,22 @@ def _resolve_video_source(operator, context):
         cameras = [n for n in visible if n.endswith(("(trkAR)", "(ARtrk)"))]
         fallback = cameras[0] if len(cameras) == 1 else ""
     if not fallback:
-        operator.report({"ERROR"}, "切り抜きの映像 %s が選ばれていますが、切り抜きが動いていません。"
-                                   "元の iPhone のソースを選ぶか、RVM で切り抜く" % source)
+        operator.report({"ERROR"}, _t("The matte video %s is selected, but matting is not running. Select the original iPhone source, or use Matte with RVM") % source)
         return None
     settings.ndi_in_source = fallback
-    operator.report({"INFO"}, "切り抜きが動いていないので、元のソース %s で受けます" % fallback)
+    operator.report({"INFO"}, _t("Matting is not running, so receiving the original source %s") % fallback)
     return fallback
 
 
 class TRKAR_OT_ndi_in_start(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_start"
-    bl_label = "NDI 受信開始"
-    bl_description = "NDI の映像を画像「%s」に流し込む" % ndi_input.IMAGE_NAME
+    bl_label = "Start NDI Receiving"
+    bl_description = "Stream the NDI video into the image \"%s\"" % ndi_input.IMAGE_NAME
 
     def execute(self, context):
         settings = context.scene.trkar
         if not settings.ndi_in_source:
-            self.report({"ERROR"}, "ソースを選んでください")
+            self.report({"ERROR"}, _t("Select a source"))
             return {"CANCELLED"}
         source = _resolve_video_source(self, context)
         if source is None:
@@ -912,6 +946,7 @@ def _video_shown(context):
 def _ensure_video_shown(operator, context):
     """実写を受け始めたのに映すものが何も無ければ、カメラの前に板を置く (初めてのときに「映らない」とならないように)"""
     settings = context.scene.trkar
+    depth_input.update_sharpen(settings)  # 前の版で作った板にも輪郭の描き方を入れる
     if not settings.ndi_in_auto_screen or _video_shown(context):
         return
     camera = settings.camera or context.scene.camera
@@ -920,14 +955,14 @@ def _ensure_video_shown(operator, context):
     try:
         bpy.ops.trkar.ndi_in_front()
     except RuntimeError as exc:
-        operator.report({"WARNING"}, "実写を映す板を置けません: %s" % exc)
+        operator.report({"WARNING"}, _t("Cannot place the video plate: %s") % exc)
         return
-    operator.report({"INFO"}, "実写を映す板をカメラの前に置きました (板・背景 で変えられます)")
+    operator.report({"INFO"}, _t("Placed the video plate in front of the camera (change it under Plate & Background)"))
 
 
 class TRKAR_OT_ndi_in_stop(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_stop"
-    bl_label = "NDI 受信停止"
+    bl_label = "Stop NDI Receiving"
 
     def execute(self, _context):
         ndi_in.stop()
@@ -967,18 +1002,17 @@ def _switch_to_matte():
 
 class TRKAR_OT_matte_start(bpy.types.Operator):
     bl_idname = "trkar.matte_start"
-    bl_label = "RVM で切り抜く"
-    bl_description = ("選んでいる NDI ソースを、この PC の RVM (Robust Video Matting、AI の人物の切り抜き) で切り抜き、"
-                      "アルファ付きの \"%s\" に切り替えて受ける (遅延 約 +50ms)") % getattr(matte, "OUTPUT_NAME", "")
+    bl_label = "Matte with RVM"
+    bl_description = ("Matte the selected NDI source with RVM (Robust Video Matting, AI person matting) on this PC, then switch to receiving \"%s\" with alpha (latency about +50ms)") % getattr(matte, "OUTPUT_NAME", "")
 
     def execute(self, context):
         settings = context.scene.trkar
         source = settings.ndi_in_source
         if not source:
-            self.report({"ERROR"}, "先に NDI ソース (iPhone の trkAR) を選んでください")
+            self.report({"ERROR"}, _t("Select an NDI source (trkAR on the iPhone) first"))
             return {"CANCELLED"}
         if source.endswith("(%s)" % matte.OUTPUT_NAME):
-            self.report({"ERROR"}, "切り抜き済みの映像が選ばれています。元の iPhone のソースを選んでください")
+            self.report({"ERROR"}, _t("A matted video is selected. Select the original iPhone source"))
             return {"CANCELLED"}
         settings.ndi_in_camera_source = source  # 切り抜きが動いていないのに切り抜きの映像が残ったら、ここへ戻す
         just_stopped = time.monotonic() - matte_relay.stopped_at < 10.0
@@ -992,11 +1026,11 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
             except Exception as exc:
                 self.report({"ERROR"}, str(exc))
                 return {"CANCELLED"}
-            self.report({"WARNING"}, "別に動いている中継 (%s) を受けます" % existing)
+            self.report({"WARNING"}, _t("Receiving from a relay already running separately (%s)") % existing)
             return {"FINISHED"}
         folder = _matte_folder(context)
         if folder is None:
-            self.report({"ERROR"}, "trkar_matte.py が見つかりません。アドオン設定の「RVM 中継のフォルダ」に tools/matte を指定")
+            self.report({"ERROR"}, _t("trkar_matte.py not found. Set \"RVM Relay Folder\" in the add-on preferences to tools/matte"))
             return {"CANCELLED"}
         matte_relay.previous_source = source
         matte_relay.previous_running = ndi_in.running
@@ -1015,8 +1049,8 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
 
 class TRKAR_OT_matte_stop(bpy.types.Operator):
     bl_idname = "trkar.matte_stop"
-    bl_label = "切り抜きをやめる"
-    bl_description = "RVM の中継を止め、NDI 受信を元のソースに戻す"
+    bl_label = "Stop Matting"
+    bl_description = "Stop the RVM relay and switch NDI receiving back to the original source"
 
     def execute(self, context):
         _stop_matte(context)
@@ -1078,16 +1112,17 @@ def _video_material(name, image):
         material.surface_render_method = "DITHERED"
     elif hasattr(material, "blend_method"):
         material.blend_method = "HASHED"
+    depth_input.apply_sharpen(material, bpy.context.scene.trkar)
     return material
 
 
 class TRKAR_OT_ndi_in_screen(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_screen"
-    bl_label = "スクリーンを置く"
-    bl_description = "受信映像を貼った板 (発光マテリアル) を 3D カーソルの位置に置く。アルファ付きの映像は透ける"
+    bl_label = "Place Screen"
+    bl_description = "Place a plate (emission material) showing the received video at the 3D cursor. Video with alpha is see-through"
     bl_options = {"REGISTER", "UNDO"}
 
-    height: FloatProperty(name="高さ", default=1.0, min=0.01, unit="LENGTH")
+    height: FloatProperty(name="Height", default=1.0, min=0.01, unit="LENGTH")
 
     def execute(self, context):
         image = ndi_input.ensure_image()
@@ -1298,16 +1333,15 @@ def _update_camera_screen():
 
 class TRKAR_OT_ndi_in_front(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_front"
-    bl_label = "カメラの前に置く"
-    bl_description = ("受信映像を貼った板を追従カメラの子にして、画面いっぱいに `手前の距離` の所へ置く。"
-                      "アルファ付きの映像 (RVM) なら人だけが CG より手前に出る")
+    bl_label = "Place in Front of Camera"
+    bl_description = ("Parent a plate showing the received video to the tracked camera, filling the frame at `Near Distance`. With video that has alpha (RVM), only the person appears in front of the CG")
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         settings = context.scene.trkar
         camera = settings.camera or context.scene.camera
         if camera is None or camera.type != "CAMERA":
-            self.report({"ERROR"}, "カメラがありません")
+            self.report({"ERROR"}, _t("No camera"))
             return {"CANCELLED"}
         image = ndi_input.ensure_image()
         obj = bpy.data.objects.get(CAMERA_SCREEN_NAME)
@@ -1337,14 +1371,14 @@ class TRKAR_OT_ndi_in_front(bpy.types.Operator):
 
 class TRKAR_OT_ndi_in_camera_bg(bpy.types.Operator):
     bl_idname = "trkar.ndi_in_camera_bg"
-    bl_label = "カメラ背景に表示"
-    bl_description = "受信映像を追従カメラの背景画像に設定する (3D ビューのカメラ視点でだけ見える)"
+    bl_label = "Show as Camera Background"
+    bl_description = "Set the received video as the tracked camera's background image (visible only in the 3D View camera view)"
 
     def execute(self, context):
         settings = context.scene.trkar
         camera = settings.camera or context.scene.camera
         if camera is None or camera.type != "CAMERA":
-            self.report({"ERROR"}, "カメラがありません")
+            self.report({"ERROR"}, _t("No camera"))
             return {"CANCELLED"}
         image = ndi_input.ensure_image()
         cam = camera.data
@@ -1385,13 +1419,13 @@ def _use_material_view(operator, context):
     """ソリッド表示だと実写の色も透明な縁も出ないので、このビューをマテリアルプレビューにする。"""
     if _needs_material_view(context):
         _view3d(context)[1].spaces.active.shading.type = "MATERIAL"
-        operator.report({"INFO"}, "実写の色を出すため、このビューをマテリアルプレビューにしました")
+        operator.report({"INFO"}, _t("Switched this view to Material Preview to show the live video colors"))
 
 
 class TRKAR_OT_view_material(bpy.types.Operator):
     bl_idname = "trkar.view_material"
-    bl_label = "マテリアルプレビューにする"
-    bl_description = "このビューをマテリアルプレビューにする (ソリッド表示ではスクリーンに実写の色が付かない)"
+    bl_label = "Switch to Material Preview"
+    bl_description = "Switch this view to Material Preview (in Solid shading the screen shows no live video colors)"
 
     def execute(self, context):
         _use_material_view(self, context)
@@ -1400,13 +1434,13 @@ class TRKAR_OT_view_material(bpy.types.Operator):
 
 class TRKAR_OT_depth_start(bpy.types.Operator):
     bl_idname = "trkar.depth_start"
-    bl_label = "深度受信開始"
-    bl_description = "trkAR の LiDAR 深度を受けて「%s」の形を毎フレーム更新する" % depth_input.OBJECT_NAME
+    bl_label = "Start Depth Receiving"
+    bl_description = "Receive LiDAR depth from trkAR and update the shape of \"%s\" every frame" % depth_input.OBJECT_NAME
 
     def execute(self, context):
         settings = context.scene.trkar
         if settings.depth_transport == "NDI" and not settings.depth_source:
-            self.report({"ERROR"}, "深度ソースを選んでください")
+            self.report({"ERROR"}, _t("Select a depth source"))
             return {"CANCELLED"}
         if player.active:
             player.stop(context.scene)
@@ -1427,7 +1461,7 @@ class TRKAR_OT_depth_start(bpy.types.Operator):
 
 class TRKAR_OT_depth_stop(bpy.types.Operator):
     bl_idname = "trkar.depth_stop"
-    bl_label = "深度受信停止"
+    bl_label = "Stop Depth Receiving"
 
     def execute(self, context):
         depth_in.stop()
@@ -1437,15 +1471,15 @@ class TRKAR_OT_depth_stop(bpy.types.Operator):
 
 class TRKAR_OT_depth_screen(bpy.types.Operator):
     bl_idname = "trkar.depth_screen"
-    bl_label = "深度スクリーンを作る"
-    bl_description = "追従カメラの子として、深度で立体になるスクリーン (実写テクスチャ付き) を作る"
+    bl_label = "Create Depth Screen"
+    bl_description = "Create a screen (with live video texture) that becomes 3D from depth, as a child of the tracked camera"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         settings = context.scene.trkar
         camera = settings.camera or context.scene.camera
         if camera is None:
-            self.report({"ERROR"}, "カメラがありません")
+            self.report({"ERROR"}, _t("No camera"))
             return {"CANCELLED"}
         obj = bpy.data.objects.get(depth_input.OBJECT_NAME)
         if obj is None:
@@ -1470,14 +1504,14 @@ class TRKAR_OT_depth_screen(bpy.types.Operator):
 
 class TRKAR_OT_depth_freeze(bpy.types.Operator):
     bl_idname = "trkar.depth_freeze"
-    bl_label = "今の形を固定"
-    bl_description = "今の深度スクリーンを、その場所・その映像のまま別オブジェクトとして残す"
+    bl_label = "Freeze Current Shape"
+    bl_description = "Keep the current Depth Screen as a separate object, with its current location and video"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         source = bpy.data.objects.get(depth_input.OBJECT_NAME)
         if source is None or len(source.data.vertices) == 0:
-            self.report({"ERROR"}, "深度スクリーンがまだありません")
+            self.report({"ERROR"}, _t("No Depth Screen yet"))
             return {"CANCELLED"}
         world = source.matrix_world.copy()
         obj = source.copy()
@@ -1517,8 +1551,7 @@ def _take_path(context):
 class TRKAR_OT_take_rec_start(bpy.types.Operator):
     bl_idname = "trkar.take_rec_start"
     bl_label = "REC"
-    bl_description = ("タイムラインを再生しながら、カメラの動き (キーフレーム)・実写・深度スクリーンを録る。"
-                      "もう一度押すか再生を止めると終わる")
+    bl_description = ("Record the camera motion (keyframes), live video, and Depth Screen while playing the timeline. Press again or stop playback to finish")
 
     def execute(self, context):
         if player.active:
@@ -1602,8 +1635,8 @@ def _draw_slate_settings(layout, prefs):
 
 class TRKAR_OT_slate_unset(bpy.types.Operator):
     bl_idname = "trkar.slate_unset"
-    bl_label = "スレートを未設定に戻す"
-    bl_description = "Scene / Cut / Take を 0 にする (来歴では S00C00T00 = スレートを設定していないカット)"
+    bl_label = "Reset Slate to Unset"
+    bl_description = "Set Scene / Cut / Take to 0 (in provenance, S00C00T00 = a cut with no slate set)"
 
     def execute(self, context):
         prefs = _prefs(context)
@@ -1615,12 +1648,12 @@ class TRKAR_OT_slate_unset(bpy.types.Operator):
 
 class TRKAR_OT_take_rec_stop(bpy.types.Operator):
     bl_idname = "trkar.take_rec_stop"
-    bl_label = "録画停止"
+    bl_label = "Stop Recording"
 
     def execute(self, context):
         path = recorder.stop(context)
         if path:
-            self.report({"INFO"}, "%s: %d フレーム (間引き %d)" % (os.path.basename(path), recorder.frames,
+            self.report({"INFO"}, _t("%s: %d frames (dropped %d)") % (os.path.basename(path), recorder.frames,
                                                                recorder.dropped))
             _run_hook(path, "recorded")
         return {"FINISHED"}
@@ -1656,7 +1689,7 @@ def _play_to_live(context):
 def _start_player(operator, context):
     path = _take_path(context)
     if path is None:
-        operator.report({"ERROR"}, "テイクのフォルダ (take.json のある所) を選んでください")
+        operator.report({"ERROR"}, _t("Select a take folder (the one containing take.json)"))
         return False
     if not player.active:
         _live_before_play["ndi"] = ndi_in.running
@@ -1670,6 +1703,7 @@ def _start_player(operator, context):
         player.stop(context.scene)
         operator.report({"ERROR"}, str(exc))
         return False
+    _sync_take_offset(context.scene.trkar, player.info["time_offset"])
     _apply_take_range(context)
     return True
 
@@ -1710,7 +1744,7 @@ def _reload_selected_take(context):
         return
     reports = _Reports()
     if not _start_player(reports, context):
-        print("trkAR: テイクを読み直せませんでした:", "; ".join(reports.errors))
+        print(_t("trkAR: could not reload the take:"), "; ".join(reports.errors))
 
 
 def _take_siblings(context):
@@ -1726,23 +1760,23 @@ def _take_siblings(context):
 
 class TRKAR_OT_take_step(bpy.types.Operator):
     bl_idname = "trkar.take_step"
-    bl_label = "前後のテイク"
-    bl_description = "同じフォルダの前 / 次のテイク (録った順) に切り替えて、そのまま再生できるようにする"
+    bl_label = "Previous / Next Take"
+    bl_description = "Switch to the previous / next take in the same folder (in recording order), ready to play"
 
     step: IntProperty(default=1)
 
     @classmethod
     def description(cls, _context, properties):
-        return "前のテイク (ひとつ古い) に切り替えて再生する" if properties.step < 0 else \
-            "次のテイク (ひとつ新しい) に切り替えて再生する"
+        return _t("Switch to the previous take (one older) and play it") if properties.step < 0 else \
+            _t("Switch to the next take (one newer) and play it")
 
     def execute(self, context):
         if recorder.recording or _export["running"]:
-            self.report({"ERROR"}, "録画か書き出しの最中です")
+            self.report({"ERROR"}, _t("Recording or exporting is in progress"))
             return {"CANCELLED"}
         _folder, takes = _take_siblings(context)
         if not takes:
-            self.report({"ERROR"}, "テイクがありません")
+            self.report({"ERROR"}, _t("No takes"))
             return {"CANCELLED"}
         current = _take_path(context)
         if current in takes:
@@ -1750,7 +1784,7 @@ class TRKAR_OT_take_step(bpy.types.Operator):
         else:  # 選んでいなければ、前 = 最新、次 = 最初
             index = len(takes) - 1 if self.step < 0 else 0
         if not 0 <= index < len(takes):
-            self.report({"INFO"}, "最初のテイクです" if index < 0 else "最後のテイクです")
+            self.report({"INFO"}, _t("This is the first take") if index < 0 else _t("This is the last take"))
             return {"CANCELLED"}
         _set_take_path(context, takes[index])
         if not _start_player(self, context):
@@ -1773,15 +1807,15 @@ def _draw_take_position(layout, context):
     fps = info.get("fps") or 24
     frames = (info.get("frame_end") or 0) - (info.get("frame_start") or 1) + 1
     recorded_in = (info.get("location") or {}).get("blend") or "-"
-    text = "%d / %d   %s   %.1f 秒" % (takes.index(current) + 1 if current in takes else 0, len(takes),
+    text = _t("%d / %d   %s   %.1f s") % (takes.index(current) + 1 if current in takes else 0, len(takes),
                                      recorded_in, frames / fps)
     layout.label(text=text, icon="FILE_MOVIE")
 
 
 class TRKAR_OT_take_play(bpy.types.Operator):
     bl_idname = "trkar.take_play"
-    bl_label = "テイクを再生"
-    bl_description = "受信を止め、テイクのカメラの動き・実写・深度をタイムラインで再生できるようにする"
+    bl_label = "Play Take"
+    bl_description = "Stop receiving and make the take's camera motion, live video, and depth playable on the timeline"
 
     def execute(self, context):
         if not _start_player(self, context):
@@ -1790,10 +1824,35 @@ class TRKAR_OT_take_play(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class TRKAR_OT_take_align_here(bpy.types.Operator):
+    bl_idname = "trkar.take_align_here"
+    bl_label = "Range Start Here"
+    bl_description = ("Shift the take against the CG so the start of the take's shot (the range start if a range is set, otherwise the beginning of the take) lands on the current frame of the timeline (the point in the background CG to match)")
+
+    @classmethod
+    def poll(cls, context):
+        return player.active and not _export["running"]
+
+    def execute(self, context):
+        scene = context.scene
+        settings = scene.trkar
+        target = scene.frame_current
+        first = player.info["frame_start"]
+        if settings.take_use_range:
+            first = _take_range(settings, scene.render, first, player.info["frame_end"])[0]
+        delta = target - first
+        if not delta:
+            return {"CANCELLED"}
+        _set_take_offset(context, player.info["time_offset"] + delta)
+        scene.frame_set(target)
+        self.report({"INFO"}, _t("Shifted the take by %+d frames against the CG (current offset %+d)") % (delta, player.info["time_offset"]))
+        return {"FINISHED"}
+
+
 class TRKAR_OT_take_live(bpy.types.Operator):
     bl_idname = "trkar.take_live"
-    bl_label = "ライブに戻る"
-    bl_description = "テイクの再生をやめ、止める前に受けていた NDI / 深度を受け直す"
+    bl_label = "Back to Live"
+    bl_description = "Stop playing the take and resume receiving the NDI / depth that was being received before"
 
     def execute(self, context):
         _play_to_live(context)
@@ -1810,12 +1869,8 @@ def _anchor_restart(operator, context):
 
 class TRKAR_OT_take_anchor_add(bpy.types.Operator):
     bl_idname = "trkar.take_anchor_add"
-    bl_label = "オフセットを付ける"
-    bl_description = ("背景に対してテイク (人とカメラの動き) をずらすための Empty を、テイクの人の居る所 "
-                      "(始めのフレームでカメラの「手前の距離」前、床の高さ) に置き、再生中のカメラをその子にする。"
-                      "Empty を動かす・Z で回すと、カメラの動きはそのままで背景の中の場所がずれる。"
-                      "Empty の Y の矢印が始めのフレームでカメラの見る向き。"
-                      "置いた場所はテイクごとに take.json に残り、書き出しにも使う")
+    bl_label = "Add Offset"
+    bl_description = ("Place an Empty for shifting the take (person and camera motion) against the background where the person is in the take (\"Near Distance\" in front of the camera on the first frame, at floor height), and parent the playing camera to it. Moving the Empty or rotating it in Z shifts the location within the background while keeping the camera motion. The Empty's Y arrow is the camera's viewing direction on the first frame. The placement is saved per take in take.json and is also used for export")
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -1830,9 +1885,8 @@ class TRKAR_OT_take_anchor_add(bpy.types.Operator):
 
 class TRKAR_OT_take_anchor_cursor(bpy.types.Operator):
     bl_idname = "trkar.take_anchor_cursor"
-    bl_label = "3D カーソルへ"
-    bl_description = ("オフセットの基準 (テイクの人の居る所) を 3D カーソルの位置へ動かす。"
-                      "Shift + 右クリックで床をクリックしてから押す")
+    bl_label = "To 3D Cursor"
+    bl_description = ("Move the offset reference (where the person is in the take) to the 3D cursor. Shift + right-click the floor first, then press")
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -1845,9 +1899,8 @@ class TRKAR_OT_take_anchor_cursor(bpy.types.Operator):
 
 class TRKAR_OT_take_anchor_previous(bpy.types.Operator):
     bl_idname = "trkar.take_anchor_previous"
-    bl_label = "前の置き場を使う"
-    bl_description = ("このテイクを再生する前に .blend にあった置き場の位置に戻し、このテイクに残す。"
-                      "置き場がテイクごとになる前 (0.9.11 まで) に合わせた置き場を引き継ぐときに使う")
+    bl_label = "Use Previous Anchor"
+    bl_description = ("Restore the anchor position that was in the .blend before playing this take, and save it to this take. Use it to carry over an anchor set before anchors became per-take (up to 0.9.11)")
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -1864,8 +1917,8 @@ class TRKAR_OT_take_anchor_previous(bpy.types.Operator):
 
 class TRKAR_OT_take_anchor_remove(bpy.types.Operator):
     bl_idname = "trkar.take_anchor_remove"
-    bl_label = "オフセットを外す"
-    bl_description = "背景のオフセットを外して、テイクを録ったときの位置で再生する"
+    bl_label = "Remove Offset"
+    bl_description = "Remove the Background Offset and play the take at the position where it was recorded"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -1947,10 +2000,8 @@ def _set_output(render, path, video, size="SCENE"):
 
 class TRKAR_OT_take_render(bpy.types.Operator):
     bl_idname = "trkar.take_render"
-    bl_label = "書き出し"
-    bl_description = ("テイクをカメラ視点で <テイク>/render.mp4 (または render/ の連番 PNG) に書き出す。"
-                      "render.mp4 は次の書き出しで上書きされるので、render_<.blend の名前>.mp4 にも控えを残す。"
-                      "解像度はシーンの出力の設定")
+    bl_label = "Export"
+    bl_description = ("Export the take from the camera view to <take>/render.mp4 (or a PNG sequence in render/). render.mp4 is overwritten by the next export, so a copy is also kept as render_<.blend name>.mp4. Resolution follows the scene's output settings")
 
     def execute(self, context):
         if not _start_player(self, context):
@@ -1999,12 +2050,12 @@ class TRKAR_OT_take_render(bpy.types.Operator):
 
         if _export["running"]:
             restore()
-            self.report({"ERROR"}, "前の書き出しがまだ動いています")
+            self.report({"ERROR"}, _t("The previous export is still running"))
             return {"CANCELLED"}
         area, region = _view3d_window(context)
         if area is None:
             restore()
-            self.report({"ERROR"}, "3D ビューがありません")
+            self.report({"ERROR"}, _t("No 3D View"))
             return {"CANCELLED"}
         view = area.spaces.active.region_3d
         perspective = view.view_perspective
@@ -2030,7 +2081,7 @@ class TRKAR_OT_take_render(bpy.types.Operator):
             result = bpy.ops.render.opengl("INVOKE_DEFAULT", animation=True)
         if "RUNNING_MODAL" not in result:
             finish(False)
-            self.report({"ERROR"}, "書き出しを始められませんでした")
+            self.report({"ERROR"}, _t("Could not start the export"))
             return {"CANCELLED"}
         _export.update(running=True, started=False, finish=finish, out=out, video=video, kept="",
                        start=scene.frame_start, end=scene.frame_end, frame=scene.frame_start - 1,
@@ -2073,19 +2124,19 @@ def _watch_export():
     try:
         _export["finish"](completed)
     except Exception as exc:
-        _export["message"] = "書き出しの後始末に失敗: %s" % exc
+        _export["message"] = _t("Export cleanup failed: %s") % exc
         return None
     seconds = time.monotonic() - _export["t0"]
     out = _export["out"]
     if not completed:
-        _export["message"] = "書き出しを中止しました (%d フレームまで)" % _export["frame"]
+        _export["message"] = _t("Export canceled (up to frame %d)") % _export["frame"]
     elif _export["video"]:
         size = os.path.getsize(out) / 1e6 if os.path.exists(out) else 0
-        _export["message"] = "render.mp4 %.1f MB (%.0f 秒)" % (size, seconds)
+        _export["message"] = _t("render.mp4 %.1f MB (%.0f s)") % (size, seconds)
     else:
-        _export["message"] = "render/ に %d 枚 (%.0f 秒)" % (len(take.list_frames(out)), seconds)
+        _export["message"] = _t("%d images in render/ (%.0f s)") % (len(take.list_frames(out)), seconds)
     if completed and _export["kept"]:
-        _export["message"] += "  控え %s" % os.path.basename(_export["kept"])
+        _export["message"] += _t("  copy %s") % os.path.basename(_export["kept"])
     return None
 
 
@@ -2105,8 +2156,9 @@ def _note_render(path, scene, video):
             "width": render.resolution_x * render.resolution_percentage // 100,
             "height": render.resolution_y * render.resolution_percentage // 100,
             "fps": render.fps / render.fps_base,
-            "frame_start": scene.frame_start,
-            "frame_end": scene.frame_end,
+            # テイクのコマ (粘土の入力の make_clay_take.py が既定の範囲に使う)。背景の CG は + time_offset
+            "frame_start": take.take_frame(info, scene.frame_start),
+            "frame_end": take.take_frame(info, scene.frame_end),
             "blend": take.blend_label(),
             "kept": os.path.basename(kept),
         }
@@ -2128,7 +2180,7 @@ def _run_hook(path, event):
         if wanted:
             hooks.run(path, event, prefs.hook_command, ADDON_VERSION or "", prefs.hook_timeout)
     except Exception as exc:
-        print("trkAR: テイクのあとのコマンドを始められません: %s" % exc)
+        print(_t("trkAR: cannot start the after-take command: %s") % exc)
 
 
 def _draw_hook_settings(layout, prefs):
@@ -2151,19 +2203,18 @@ def _draw_hook(layout, context, path):
         row.alert = st["state"] == "failed"
         row.label(text=text, icon=icon)
         if st.get("url"):
-            layout.operator("wm.url_open", text="開く", icon="URL").url = st["url"]
+            layout.operator("wm.url_open", text=_t("Open"), icon="URL").url = st["url"]
     row = layout.row(align=True)
     row.enabled = bool(prefs.hook_command.strip()) and not hooks.busy(path)
     row.operator("trkar.take_hook_run", icon="FILE_REFRESH")
     if st is not None:
-        row.operator("trkar.take_open", icon="TEXT", text="ログ").sub = hooks.LOG_FILE
+        row.operator("trkar.take_open", icon="TEXT", text=_t("Log")).sub = hooks.LOG_FILE
 
 
 class TRKAR_OT_take_hook_run(bpy.types.Operator):
     bl_idname = "trkar.take_hook_run"
-    bl_label = "コマンドを流す"
-    bl_description = ("アドオン設定の「テイクのあとに流すコマンド」を、このテイクでもう一度流す "
-                      "(書き出してあれば event = exported、なければ recorded)")
+    bl_label = "Run Command"
+    bl_description = ("Run the add-on preferences' \"After-Take Command\" again for this take (event = exported if exported, otherwise recorded)")
 
     @classmethod
     def poll(cls, context):
@@ -2175,7 +2226,7 @@ class TRKAR_OT_take_hook_run(bpy.types.Operator):
         prefs = _prefs(context)
         event = "exported" if hooks._render_path(path) else "recorded"
         if not hooks.run(path, event, prefs.hook_command, ADDON_VERSION or "", prefs.hook_timeout):
-            self.report({"ERROR"}, "アドオン設定の「テイクのあとに流すコマンド」が空か、読めません")
+            self.report({"ERROR"}, _t("\"After-Take Command\" in the add-on preferences is empty or unreadable"))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -2198,7 +2249,7 @@ class _Reports:
 def _call(context, operator, **kwargs):
     result = operator(**kwargs)
     if "FINISHED" not in result and "RUNNING_MODAL" not in result:
-        raise RuntimeError("%s が動きませんでした" % operator.idname_py())
+        raise RuntimeError(_t("%s did not run") % operator.idname_py())
     return result
 
 
@@ -2239,9 +2290,9 @@ def _bridge_state(context):
 def _bridge_open_scene(context, path):
     path = os.path.abspath(os.path.expanduser(path))
     if not os.path.isfile(path):
-        raise RuntimeError("ありません: %s" % path)
+        raise RuntimeError(_t("Not found: %s") % path)
     if _export["running"] or recorder.recording:
-        raise RuntimeError("録画か書き出しの最中です")
+        raise RuntimeError(_t("Recording or exporting is in progress"))
     _call(context, bpy.ops.wm.open_mainfile, filepath=path)
     # 開いた直後は窓や画面が入れ替わっているので、中身は次の state で見る
     return {"blend": path}
@@ -2271,15 +2322,15 @@ def _bridge_list_takes(context):
 def _bridge_select_take(context, name=""):
     """テイクを選んで再生できるようにする。name が空なら最新"""
     if recorder.recording or _export["running"]:
-        raise RuntimeError("録画か書き出しの最中です")
+        raise RuntimeError(_t("Recording or exporting is in progress"))
     listing = _bridge_list_takes(context)["takes"]
     found = [t for t in listing if t["name"] == name] if name else listing[-1:]
     if not found:
-        raise RuntimeError("テイクがありません: %s" % (name or "(最新)"))
+        raise RuntimeError(_t("Take not found: %s") % (name or _t("(latest)")))
     _set_take_path(context, found[0]["path"])
     reports = _Reports()
     if not _start_player(reports, context):
-        raise RuntimeError("; ".join(reports.errors) or "再生を始められません")
+        raise RuntimeError("; ".join(reports.errors) or _t("Cannot start playback"))
     _use_material_view(reports, context)
     return _bridge_state(context)
 
@@ -2287,7 +2338,7 @@ def _bridge_select_take(context, name=""):
 def _bridge_place_anchor(context, location=None, heading_deg=None):
     """背景のオフセットを作り (無ければ)、位置 (床の高さ) と向き (Z、度) を入れる。省いたものは録ったときのまま"""
     if not player.active:
-        raise RuntimeError("先に select_take でテイクを選んでください")
+        raise RuntimeError(_t("Select a take with select_take first"))
     if bpy.data.objects.get(take.ANCHOR_NAME) is None:
         _call(context, bpy.ops.trkar.take_anchor_add)
     anchor = bpy.data.objects[take.ANCHOR_NAME]
@@ -2314,7 +2365,7 @@ def _bridge_configure(context, **values):
     settings = context.scene.trkar
     unknown = sorted(set(values) - set(_BRIDGE_SETTINGS))
     if unknown:
-        raise RuntimeError("変えられない設定: %s (使えるのは %s)" % (", ".join(unknown), ", ".join(_BRIDGE_SETTINGS)))
+        raise RuntimeError(_t("Unchangeable setting: %s (available: %s)") % (", ".join(unknown), ", ".join(_BRIDGE_SETTINGS)))
     for key, value in values.items():
         setattr(settings, key, value)
     return {key: getattr(settings, key) for key in _BRIDGE_SETTINGS}
@@ -2323,9 +2374,9 @@ def _bridge_configure(context, **values):
 def _bridge_export_take(context):
     """書き出しを始めて返す (終わりは state の export で見る)"""
     if _export["running"]:
-        raise RuntimeError("前の書き出しがまだ動いています")
+        raise RuntimeError(_t("The previous export is still running"))
     if not player.active:
-        raise RuntimeError("先に select_take でテイクを選んでください")
+        raise RuntimeError(_t("Select a take with select_take first"))
     _call(context, bpy.ops.trkar.take_render)
     return _bridge_state(context)
 
@@ -2344,23 +2395,21 @@ _BRIDGE_HANDLERS = {
 
 class TRKAR_OT_bridge_start(bpy.types.Operator):
     bl_idname = "trkar.bridge_start"
-    bl_label = "通信ポートを開く"
-    bl_description = ("外のツール (Griptape Nodes のノード、Claude などのエージェント、自作のスクリプト) から、"
-                      "決まった操作 (シーンを開く・テイクを選ぶ・背景のオフセット・書き出しの設定・書き出し・状態) を "
-                      "127.0.0.1 の HTTP で受ける。任意の Python は受けない")
+    bl_label = "Open Automation Port"
+    bl_description = ("Accept fixed operations (open a scene, select a take, Background Offset, export settings, export, status) over HTTP on 127.0.0.1 from outside tools (Griptape Nodes nodes, agents such as Claude, your own scripts). Arbitrary Python is not accepted")
 
     def execute(self, context):
         try:
             bridge.start(_BRIDGE_HANDLERS, context.scene.trkar.bridge_port)
         except OSError as exc:
-            self.report({"ERROR"}, "通信ポートを開けません: %s" % exc)
+            self.report({"ERROR"}, _t("Cannot open the Automation Port: %s") % exc)
             return {"CANCELLED"}
         return {"FINISHED"}
 
 
 class TRKAR_OT_bridge_stop(bpy.types.Operator):
     bl_idname = "trkar.bridge_stop"
-    bl_label = "通信ポートを閉じる"
+    bl_label = "Close Automation Port"
 
     def execute(self, context):
         bridge.stop()
@@ -2373,21 +2422,19 @@ def _prefs(context):
 
 class TRKAR_OT_take_prepare(bpy.types.Operator):
     bl_idname = "trkar.take_prepare"
-    bl_label = "生成用の素材を書き出す"
-    bl_description = ("参照 (リファレンス) を入れられる動画生成モデルに渡す中間ファイルを <テイク>/for_generation/ に書く: "
-                      "参照の動画 (粘土の背景 + 人の輪郭線)・役者の写真・場所のレイアウト・最初のコマ・カメラ・プロンプトのひな形。"
-                      "範囲を入れていればその範囲。生成はしない")
+    bl_label = "Export Generation Inputs"
+    bl_description = ("Write intermediate files for video generation models that take references to <take>/for_generation/: the reference video (clay background + person outlines), actor photos, location layout, first frame, camera, and a prompt template. Uses the range if one is set. Does not generate")
 
     def execute(self, context):
         if _export["running"] or recorder.recording:
-            self.report({"ERROR"}, "録画・書き出しの最中です")
+            self.report({"ERROR"}, _t("Recording or export in progress"))
             return {"CANCELLED"}
         if not _start_player(self, context):
             return {"CANCELLED"}
         scene, settings = context.scene, context.scene.trkar
         camera = settings.camera or scene.camera
         if camera is None:
-            self.report({"ERROR"}, "カメラがありません")
+            self.report({"ERROR"}, _t("No camera"))
             return {"CANCELLED"}
         first, last = player.info["frame_start"], player.info["frame_end"]
         if settings.take_use_range:
@@ -2405,19 +2452,19 @@ class TRKAR_OT_take_prepare(bpy.types.Operator):
             _out, manifest = prep.export(scene, player, camera, settings.take_prep_long_side, first, last,
                                          settings.take_prep_layout, progress)
         except Exception as exc:
-            self.report({"ERROR"}, "生成用の素材を書き出せません: %s" % exc)
+            self.report({"ERROR"}, _t("Cannot export generation inputs: %s") % exc)
             return {"CANCELLED"}
         finally:
             wm.progress_end()
         ref = manifest["files"]["reference.mp4"]
-        self.report({"INFO"}, "%s/ に書き出しました (%d×%d、%d フレーム、%.0f 秒)" % (
+        self.report({"INFO"}, _t("Exported to %s/ (%d×%d, %d frames, %.0f s)") % (
             prep.FOLDER, ref["width"], ref["height"], ref["frames"], manifest["seconds_to_make"]))
         return {"FINISHED"}
 
 
 class TRKAR_OT_take_open(bpy.types.Operator):
     bl_idname = "trkar.take_open"
-    bl_label = "フォルダを開く"
+    bl_label = "Open Folder"
 
     sub: StringProperty(default="")
 
@@ -2459,7 +2506,7 @@ def _header_toggle(layout, running, start, stop, status=""):
 class TRKAR_PT_panel(_TrkARPanel, bpy.types.Panel):
     """trkAR (iPhone / iPad など) から受けるもの (姿勢・実写・深度) を 1 つにまとめたパネル。
     見出しの ▶ でまとめて始め、中の段ごとに状態と個別の入り切りを出す"""
-    bl_label = "trkAR 受信"
+    bl_label = "trkAR Receive"
     bl_order = 0
 
     def draw_header(self, context):
@@ -2467,20 +2514,20 @@ class TRKAR_PT_panel(_TrkARPanel, bpy.types.Panel):
 
     def draw_header_preset(self, context):
         running = _receiving()
-        status = ("再生中" if player.active else "受信中") if running else ""
+        status = (_t("Playing") if player.active else _t("Receiving")) if running else ""
         _header_toggle(self.layout, running, "trkar.receive_start", "trkar.receive_stop", status)
 
     def draw(self, context):
         layout = self.layout
         settings = context.scene.trkar
         server = tracking.server
-        _receive_section(layout, "TRKAR_recv_tracking", "カメラ追従", "CAMERA_DATA",
-                         ("再生中" if player.active else "受信中") if server.running else "",
+        _receive_section(layout, "TRKAR_recv_tracking", _t("Camera Tracking"), "CAMERA_DATA",
+                         (_t("Playing") if player.active else _t("Receiving")) if server.running else "",
                          server.running, "trkar.tracking_start", "trkar.tracking_stop", None, context, _draw_tracking)
-        _receive_section(layout, "TRKAR_recv_video", "実写", "IMAGE_DATA", _video_status(),
+        _receive_section(layout, "TRKAR_recv_video", _t("Video"), "IMAGE_DATA", _video_status(),
                          ndi_in.running, "trkar.ndi_in_start", "trkar.ndi_in_stop", "receive_video", context,
                          _draw_ndi_in)
-        _receive_section(layout, "TRKAR_recv_depth", "深度", "MOD_DISPLACE", _depth_status(),
+        _receive_section(layout, "TRKAR_recv_depth", _t("Depth"), "MOD_DISPLACE", _depth_status(),
                          depth_in.running, "trkar.depth_start", "trkar.depth_stop", "receive_depth", context,
                          _draw_depth)
 
@@ -2510,54 +2557,56 @@ def _draw_tracking(layout, context):
     col.prop(settings, "port")
     # iPhone の送信先 (SystemPC IP / Port) に入れる値。▶ で畳める
     header, body = layout.panel("TRKAR_send_to", default_closed=False)
-    header.label(text="iPhone の送信先", icon="URL")
+    header.label(text=_t("iPhone Send Target"), icon="URL")
     if body:
         box = body.box()
         ips = osc.local_ipv4_addresses()
         if not ips:
-            box.label(text="ネットワークに繋がっていません", icon="ERROR")
+            box.label(text=_t("Not connected to a network"), icon="ERROR")
         for ip, kind, _dev in ips:
             row = box.row(align=True)
-            row.label(text="%s  %s : %d" % (kind or "", ip, settings.port),
+            # 接続の種類 (osc.py の値)。「有線」は比べるための値なので、出すときだけ訳す
+            shown = _t("Wired") if kind == "有線" else (kind or "")
+            row.label(text="%s  %s : %d" % (shown, ip, settings.port),
                       icon="LINKED" if kind == "有線" else ("RADIOBUT_ON" if kind == "Wi-Fi" else "NETWORK_DRIVE"))
             row.operator("trkar.copy_ip", text="", icon="COPYDOWN").ip = ip
         if server.running and server.last_sender:
-            box.label(text="受信元 %s" % server.last_sender, icon="CHECKMARK")
+            box.label(text=_t("Receiving from %s") % server.last_sender, icon="CHECKMARK")
     layout.prop(settings, "camera")
     if server.running:
         if player.active:
-            layout.label(text="テイク再生中: カメラには書き込みません", icon="PLAY")
-        layout.label(text="受信 %d 件 / UDP %d (:%d)" % (server.packet_count, server.datagram_count, server.port))
+            layout.label(text=_t("Playing a take: not writing to the camera"), icon="PLAY")
+        layout.label(text=_t("Received %d / UDP %d (:%d)") % (server.packet_count, server.datagram_count, server.port))
         # 姿勢が届いている周期 (trkAR 1.1.2 からは ARKit のフレームごと、60fps の機種で 60Hz 近く。1.1.1 までは約 30Hz)
         rate = tracking.pose_rate()
-        layout.label(text="姿勢 %.0f Hz" % rate if rate > 0 else "姿勢 -- Hz", icon="TIME")
+        layout.label(text=_t("Pose %.0f Hz") % rate if rate > 0 else _t("Pose -- Hz"), icon="TIME")
         if server.datagram_count == 0:
             col = layout.column(align=True)
-            col.label(text="何も届いていません", icon="ERROR")
-            col.label(text="iPhone の送信先 IP / ポートと、macOS の")
-            col.label(text="プライバシー > ローカルネットワーク を確認")
+            col.label(text=_t("Nothing is arriving"), icon="ERROR")
+            col.label(text=_t("Check the iPhone's target IP / port and macOS"))
+            col.label(text=_t("Privacy > Local Network"))
         elif server.packet_count == 0:
-            layout.label(text="/client/current が来ていません", icon="ERROR")
+            layout.label(text=_t("/client/current is not arriving"), icon="ERROR")
         if server.last_error:
             layout.label(text=server.last_error, icon="ERROR")
         _draw_pose_sync(layout, settings, detail=False)
         pose = tracking.current_pose()
         if pose is not None and not pose.floor_height:
-            layout.label(text="iPhone の床が未設定: 床に向けて SET GND", icon="ERROR")
+            layout.label(text=_t("iPhone floor not set: point at the floor and tap SET GND"), icon="ERROR")
 
     layout.row().prop(settings, "mode", expand=True)
     if settings.mode == "RELATIVE":
         row = layout.row(align=True)
-        row.prop(settings, "floor_from_iphone", text="高さは床から")
+        row.prop(settings, "floor_from_iphone", text=_t("Height from Floor"))
         sub = row.row(align=True)
         sub.active = settings.floor_from_iphone
-        sub.prop(settings, "floor_z", text="床")
+        sub.prop(settings, "floor_z", text=_t("Floor"))
         layout.operator("trkar.reanchor", icon="ORIENTATION_CURSOR")
         if server.running:
             if tracking.is_anchored():
-                layout.label(text="カメラを動かすには 受信停止 → 移動 → 受信開始", icon="INFO")
+                layout.label(text=_t("To move the camera: Stop Receiving, move it, Start Receiving"), icon="INFO")
             else:
-                layout.label(text="最初の姿勢を待っています…", icon="TIME")
+                layout.label(text=_t("Waiting for the first pose…"), icon="TIME")
     else:
         layout.operator("trkar.align_to_cursor", icon="PIVOT_CURSOR")
 
@@ -2566,26 +2615,26 @@ def _draw_pose_sync(layout, settings, detail):
     """映像 (NDI 受信) が姿勢よりどれだけ遅れているかと、「映像に合わせる」の状態。"""
     lag = tracking.video_lag() if ndi_in.running else None
     if lag is not None:
-        layout.label(text="映像の遅れ %.0f ms (揺れ %.0f〜%.0f)" % lag, icon="TIME")
+        layout.label(text=_t("Video delay %.0f ms (jitter %.0f–%.0f)") % lag, icon="TIME")
     state = tracking.sync["state"]
     if state == "SYNCED":
-        layout.label(text="映像と同期中", icon="CHECKMARK")
+        layout.label(text=_t("Synced with video"), icon="CHECKMARK")
         count, ahead = tracking.predicted_recent()
         if count:
             # 姿勢が映像より遅れて届いた (Wi-Fi の止まりなど)
-            verb = "予測で補った" if settings.pose_predict else "カメラは止まった"
-            layout.label(text="姿勢待ち %d コマ / 5 秒 (%s。最大 %.0f ms)" % (count, verb, ahead), icon="ERROR")
+            verb = _t("filled in by prediction") if settings.pose_predict else _t("camera stopped")
+            layout.label(text=_t("Waited for pose on %d frames / 5 s (%s; max %.0f ms)") % (count, verb, ahead), icon="ERROR")
     elif state == "TOO_LATE":
-        layout.label(text="映像の遅れが大きすぎて揃えられません", icon="ERROR")
+        layout.label(text=_t("Video delay is too large to align"), icon="ERROR")
     elif state == "NO_TIME":
-        layout.label(text="時刻が合わないので揃えていません (trkAR を更新)", icon="INFO")
+        layout.label(text=_t("Not aligning because the clocks don't match (update trkAR)"), icon="INFO")
     elif state == "NO_VIDEO" and detail:
-        layout.label(text="実写を NDI 受信すると揃えられます", icon="INFO")
+        layout.label(text=_t("Receive the video over NDI to align"), icon="INFO")
 
 
 class TRKAR_PT_tracking_place(_TrkARSubPanel, bpy.types.Panel):
     """スケール・位置合わせのオフセットと、カメラ視点の枠の外の暗さ (たまにしか触らないもの)。"""
-    bl_label = "位置・表示"
+    bl_label = "Position & Display"
     bl_parent_id = "TRKAR_PT_panel"
     bl_order = 0
 
@@ -2605,11 +2654,11 @@ class TRKAR_PT_tracking_place(_TrkARSubPanel, bpy.types.Panel):
             row.prop(camera.data, "show_passepartout", text="")
             sub = row.row(align=True)
             sub.active = camera.data.show_passepartout
-            sub.prop(camera.data, "passepartout_alpha", text="枠の外の暗さ", slider=True)
+            sub.prop(camera.data, "passepartout_alpha", text=_t("Outside Frame Dimming"), slider=True)
 
 
 class TRKAR_PT_tracking_detail(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "同期・詳細"
+    bl_label = "Sync & Details"
     bl_parent_id = "TRKAR_PT_panel"
     bl_order = 2
 
@@ -2622,7 +2671,7 @@ class TRKAR_PT_tracking_detail(_TrkARSubPanel, bpy.types.Panel):
         row.prop(settings, "pose_sync")
         sub = row.row(align=True)
         sub.active = settings.pose_sync
-        sub.prop(settings, "pose_sync_offset", text="補正 ms")
+        sub.prop(settings, "pose_sync_offset", text=_t("Correction ms"))
         sub = col.row(align=True)
         sub.active = settings.pose_sync
         sub.prop(settings, "pose_predict")
@@ -2630,7 +2679,7 @@ class TRKAR_PT_tracking_detail(_TrkARSubPanel, bpy.types.Panel):
             _draw_pose_sync(col, settings, detail=True)
             # 更新と描画の時間 (コマ落ち・ふわふわの原因を見る。perf.py)
             box = layout.box()
-            box.label(text="更新と描画の時間 (直近 3 秒)", icon="TIME")
+            box.label(text=_t("Update and draw time (last 3 s)"), icon="TIME")
             for line in perf.lines():
                 box.label(text=line)
         layout.prop(settings, "sync_fov")
@@ -2647,7 +2696,7 @@ class TRKAR_PT_tracking_detail(_TrkARSubPanel, bpy.types.Panel):
         if settings.last_client_id:
             layout.label(text="Client: %s" % settings.last_client_id[:8])
         header, body = layout.panel("TRKAR_detail_depth", default_closed=True)
-        header.label(text="深度のメッシュ・輪郭・同期", icon="MOD_DISPLACE")
+        header.label(text=_t("Depth Mesh, Outline & Sync"), icon="MOD_DISPLACE")
         if body:
             TRKAR_PT_depth_detail.draw(_Section(body), context)
 
@@ -2660,30 +2709,31 @@ def _controls_active(settings):
 
 class TRKAR_PT_controls(_TrkARSubPanel, bpy.types.Panel):
     """Blender 側のオフセット。値が入っているときは見出しに印を付ける。"""
-    bl_label = "Blender でオフセット"
+    bl_label = "Blender Offset"
     bl_parent_id = "TRKAR_PT_panel"
     bl_order = 3
 
     def draw_header_preset(self, context):
         if tracking.remote_status() is not None:
-            self.layout.label(text="リモート操作中", icon="LINKED")
+            self.layout.label(text=_t("Remote Control Active"), icon="LINKED")
         elif _controls_active(context.scene.trkar):
-            self.layout.label(text="使用中", icon="ERROR")
+            self.layout.label(text=_t("In Use"), icon="ERROR")
 
     def draw(self, context):
         layout = self.layout
         settings = context.scene.trkar
         layout.operator("trkar.view_controller", icon="VIEW_PAN", depress=view_controller.controller.running,
-                        text="ビューのコントローラーを閉じる" if view_controller.controller.running
-                        else "ビューのコントローラー")
+                        text=_t("Close View Controller") if view_controller.controller.running
+                        else _t("View Controller"))
+        view_controller.draw_panel(layout, context)
         layout.prop(settings, "use_remote")
         remote = tracking.remote_status()
         if remote is not None:
-            layout.label(text="Client %s から操作中 (レンズもその端末の設定)" % remote[:8], icon="LINKED")
+            layout.label(text=_t("Controlled from Client %s (lens settings also from that device)") % remote[:8], icon="LINKED")
         elif settings.use_remote and tracking.server.running:
             pose = tracking.current_pose()
             if pose is not None:
-                layout.label(text="モニターの端末の CTL で TARGET → CAM %d を選ぶと動かせます" % pose.camera_id,
+                layout.label(text=_t("Select TARGET → CAM %d in CTL on the monitor device to move it") % pose.camera_id,
                              icon="INFO")
         col = layout.column(align=True)
         col.prop(settings, "ctl_location")
@@ -2696,23 +2746,23 @@ class TRKAR_PT_controls(_TrkARSubPanel, bpy.types.Panel):
         col.prop(settings, "ctl_fstop")
         col.prop(settings, "ctl_focus")
         row = layout.row(align=True)
-        row.operator("trkar.ctl_reset", text="向きを戻す").target = "ROTATION"
-        row.operator("trkar.ctl_reset", text="全部戻す").target = "ALL"
+        row.operator("trkar.ctl_reset", text=_t("Reset Rotation")).target = "ROTATION"
+        row.operator("trkar.ctl_reset", text=_t("Reset All")).target = "ALL"
         row.operator("trkar.ctl_keyframe", icon="KEY_HLT")
         if player.active:
             # 録ったときのずれはカメラの動きに焼き込み済み。再生中に変えても効かない
             box = layout.box()
-            box.label(text="テイクの再生中は効きません (録ったときのずれは焼き込み済み)", icon="INFO")
-            box.label(text="テイクの位置は「録画・テイク > 背景のオフセット」で動かす")
+            box.label(text=_t("Has no effect during take playback (the offset at recording time is baked in)"), icon="INFO")
+            box.label(text=_t("Move a take's position with \"Recording & Takes > Background Offset\""))
 
 
 def _video_status():
     """実写 (NDI) の段の見出しの状態。"""
     status = ""
     if ndi_in.running:
-        status = "RVM" if matte_relay.running else "受信中"
+        status = "RVM" if matte_relay.running else _t("Receiving")
     elif player.active:
-        status = "テイク"
+        status = _t("Take")
     return status
 
 
@@ -2728,12 +2778,12 @@ def _draw_ndi_in(layout, context):
     col.prop(settings, "ndi_in_low")
     col.prop(settings, "ndi_in_auto_screen")
     if settings.ndi_in_source and settings.ndi_name and settings.ndi_name in settings.ndi_in_source:
-        layout.label(text="Blender 自身の送出です (映像がループします)", icon="ERROR")
+        layout.label(text=_t("This is Blender's own output (the video will loop)"), icon="ERROR")
     if ndi_in.running:
         width, height = ndi_in.resolution
         if ndi_in.frames_shown:
-            layout.label(text="%d×%d / %d フレーム" % (width, height, ndi_in.frames_shown))
-            layout.label(text="受信 %.1f fps / 表示 %.1f fps" % (ndi_in.recv_rate.fps, ndi_in.show_rate.fps))
+            layout.label(text=_t("%d×%d / %d frames") % (width, height, ndi_in.frames_shown))
+            layout.label(text=_t("Receive %.1f fps / Display %.1f fps") % (ndi_in.recv_rate.fps, ndi_in.show_rate.fps))
         else:
             waiting = time.monotonic() - getattr(ndi_in, "started_at", time.monotonic())
             try:
@@ -2742,10 +2792,10 @@ def _draw_ndi_in(layout, context):
                 missing = False
             if missing:
                 # 無いソースを待ち続けない (選び直す)
-                layout.label(text="ソース %s が見つかりません" % ndi_in.source_name, icon="ERROR")
-                layout.label(text="ソースを選び直して、受信を始め直してください")
+                layout.label(text=_t("Source %s not found") % ndi_in.source_name, icon="ERROR")
+                layout.label(text=_t("Select the source again and restart receiving"))
             else:
-                layout.label(text="映像を待っています…", icon="TIME")
+                layout.label(text=_t("Waiting for video…"), icon="TIME")
         if ndi_in.last_error:
             layout.label(text=ndi_in.last_error, icon="ERROR")
     # RVM の切り抜き (別プロセスの中継 tools/matte。入れていなければ押したときに場所を聞く)
@@ -2759,7 +2809,7 @@ def _draw_ndi_in(layout, context):
             sub.label(text=" / ".join(parts[:3]), icon="MOD_MASK")
             sub.label(text=" / ".join(parts[3:]))
         else:
-            sub.label(text=status or "RVM を起動中…", icon="TIME")
+            sub.label(text=status or _t("Starting RVM…"), icon="TIME")
     else:
         row = sub.row(align=True)
         row.operator("trkar.matte_start", icon="MOD_MASK")
@@ -2767,17 +2817,26 @@ def _draw_ndi_in(layout, context):
         sub.prop(settings, "receive_matte")
         if matte_relay.last_error:
             sub.label(text=matte_relay.last_error, icon="ERROR")
+    _draw_edge_style(layout, settings)
+
+
+def _draw_edge_style(layout, settings):
+    """切り抜いた人の輪郭の描き方 (くっきり / やわらか)。"""
+    col = layout.column(align=True)
+    col.row(align=True).prop(settings, "edge_style", expand=True)
+    if settings.edge_style == "SHARP":
+        col.prop(settings, "edge_sharp_width", slider=True)
 
 
 class TRKAR_PT_ndi_in_screen(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "板・背景"
+    bl_label = "Plate & Background"
     bl_parent_id = "TRKAR_PT_panel"
     bl_order = 1
 
     def draw(self, context):
         layout = self.layout
         settings = context.scene.trkar
-        layout.label(text="画像「%s」として使えます" % ndi_input.IMAGE_NAME, icon="INFO")
+        layout.label(text=_t("Available as image \"%s\"") % ndi_input.IMAGE_NAME, icon="INFO")
         # 「スクリーンを置く」(原点に板を置く) は使わないのでボタンを外した (オペレーターは残してある)
         layout.operator("trkar.ndi_in_camera_bg", icon="VIEW_CAMERA")
         layout.prop(settings, "ndi_in_lens_crop")
@@ -2785,30 +2844,30 @@ class TRKAR_PT_ndi_in_screen(_TrkARSubPanel, bpy.types.Panel):
         row.operator("trkar.ndi_in_front", icon="OUTLINER_OB_CAMERA")
         sub = row.row(align=True)
         sub.active = not settings.ndi_in_front_follow
-        sub.prop(settings, "ndi_in_front_distance", text="距離")
+        sub.prop(settings, "ndi_in_front_distance", text=_t("Distance"))
         layout.prop(settings, "ndi_in_front_follow")
         if settings.ndi_in_front_follow:
             distance, following = _front_distance(context.scene)
             if following:
-                layout.label(text="人の距離 %.2f m に置いています" % distance, icon="USER")
-                layout.label(text="深度メッシュは隠しています (板と重なってちらつくため)", icon="HIDE_ON")
+                layout.label(text=_t("Placed at the person's distance, %.2f m") % distance, icon="USER")
+                layout.label(text=_t("Depth mesh is hidden (it flickers where it overlaps the plate)"), icon="HIDE_ON")
             elif not depth_in.running:
-                layout.label(text="深度を受けていないので `距離` に置いています", icon="INFO")
+                layout.label(text=_t("Placed at `Distance` because depth is not being received"), icon="INFO")
             else:
-                layout.label(text="人が見えていないので `距離` に置いています", icon="INFO")
+                layout.label(text=_t("Placed at `Distance` because no person is visible"), icon="INFO")
         layout.prop(settings, "dof_autofocus")
         if settings.dof_autofocus:
             layout.prop(settings, "dof_autofocus_smoothing")
             camera = settings.camera or context.scene.camera
             if camera is not None and camera.type == "CAMERA" and camera.data.dof.use_dof:
                 dof = camera.data.dof
-                layout.label(text="ピント %.2f m (F%.1f)" % (dof.focus_distance, dof.aperture_fstop), icon="CAMERA_DATA")
+                layout.label(text=_t("Focus %.2f m (F%.1f)") % (dof.focus_distance, dof.aperture_fstop), icon="CAMERA_DATA")
             else:
                 # iPhone のコントローラーで F 値を 0 (DOF OFF) にしていると、カメラの被写界深度は毎回切られる
-                layout.label(text="カメラの被写界深度がオフです (iPhone の F 値かカメラの設定で入れる)", icon="INFO")
+                layout.label(text=_t("Camera depth of field is off (turn it on with the iPhone's f-stop or the camera settings)"), icon="INFO")
         # 深度の人物・背景 (人を板にする・人の距離の設定と並べる)
         header, body = layout.panel("TRKAR_screen_people", default_closed=True)
-        header.label(text="人物・背景 (深度)", icon="USER")
+        header.label(text=_t("Person & Background (Depth)"), icon="USER")
         if body:
             TRKAR_PT_depth_people.draw(_Section(body), context)
 
@@ -2817,9 +2876,9 @@ def _depth_status():
     """深度の段の見出しの状態。"""
     status = ""
     if depth_in.running:
-        status = "受信中"
+        status = _t("Receiving")
     elif player.active:
-        status = "テイク"
+        status = _t("Take")
     return status
 
 
@@ -2839,21 +2898,21 @@ def _draw_depth(layout, context):
     if depth_in.running:
         if depth_in.frames_shown:
             width, height = depth_in.resolution
-            layout.label(text="%d×%d / %d フレーム / 有効 %d%%" % (
+            layout.label(text=_t("%d×%d / %d frames / valid %d%%") % (
                 width, height, depth_in.frames_shown, depth_in.valid_ratio * 100))
         elif bpy.data.objects.get(depth_input.OBJECT_NAME) is None:
-            layout.label(text="深度スクリーンがありません", icon="ERROR")
+            layout.label(text=_t("No depth screen"), icon="ERROR")
         else:
-            layout.label(text="深度を待っています… (%s)" % depth_in.source_name, icon="TIME")
+            layout.label(text=_t("Waiting for depth… (%s)") % depth_in.source_name, icon="TIME")
         if depth_in.last_error:
             layout.label(text=depth_in.last_error, icon="ERROR")
     row = layout.row(align=True)
     row.operator("trkar.depth_screen", icon="OUTLINER_OB_CAMERA")
     row.operator("trkar.depth_freeze", icon="FREEZE")
     if not ndi_in.running and not player.active:
-        layout.label(text="映像は NDI 受信 (実写) から貼られます", icon="INFO")
+        layout.label(text=_t("The video comes from NDI receive (Video)"), icon="INFO")
     if _needs_material_view(context) and bpy.data.objects.get(depth_input.OBJECT_NAME) is not None:
-        layout.label(text="ソリッド表示では実写の色が付きません", icon="ERROR")
+        layout.label(text=_t("Live video colors are not shown in Solid shading"), icon="ERROR")
         layout.operator("trkar.view_material", icon="MATERIAL")
 
 
@@ -2873,34 +2932,34 @@ class TRKAR_PT_depth_people:
         col.prop(settings, "depth_flat_cutout")
         if settings.depth_flat_cutout:
             if depth_in.running:
-                col.label(text="人 %d%% (trkAR NDI のアルファに直接使用中)" % (depth_in.person_ratio * 100),
+                col.label(text=_t("Person %d%% (used directly as the trkAR NDI alpha)") % (depth_in.person_ratio * 100),
                           icon="USER")
             else:
-                col.label(text="深度受信 (UDP) を開始してください", icon="INFO")
+                col.label(text=_t("Start depth receiving (UDP)"), icon="INFO")
             return
         if depth_in.running and depth_in.video_alpha:
             # trkar_matte.py (RVM) の "trkAR Matte" を受けているとき
-            col.label(text="輪郭は実写のアルファ (RVM) で切り抜き中", icon="MOD_MASK")
+            col.label(text=_t("Outline is matted with the video alpha (RVM)"), icon="MOD_MASK")
         if depth_in.running and depth_in.person_only:
             # 深度なしの機種: 人だけを表示する (人物の設定は効かない)
-            col.label(text="深度なし: 人物マスクだけ (人 %d%%)" % (depth_in.person_ratio * 100),
+            col.label(text=_t("No depth: person mask only (person %d%%)") % (depth_in.person_ratio * 100),
                       icon="USER")
             col.prop(settings, "depth_person_distance")
         else:
             col.row(align=True).prop(settings, "depth_people", expand=True)
             if settings.depth_people != "OFF" and depth_in.running and depth_in.frames_shown:
                 if depth_in.has_people:
-                    col.label(text="人 %d%%" % (depth_in.person_ratio * 100), icon="USER")
+                    col.label(text=_t("Person %d%%") % (depth_in.person_ratio * 100), icon="USER")
                 else:
-                    col.label(text="人物マスクが来ていません (UDP と新しい trkAR が必要)", icon="INFO")
+                    col.label(text=_t("Person mask is not arriving (requires UDP and a newer trkAR)"), icon="INFO")
         row = col.row(align=True)
         row.prop(settings, "depth_background", toggle=True)
         sub = row.row(align=True)
         sub.active = settings.depth_background
-        sub.prop(settings, "depth_background_distance", text="距離")
+        sub.prop(settings, "depth_background_distance", text=_t("Distance"))
         if (settings.depth_background and depth_in.running and depth_in.person_only
                 and settings.depth_background_distance <= settings.depth_person_distance):
-            col.label(text="背景が人より手前です (人の距離より遠くする)", icon="ERROR")
+            col.label(text=_t("Background is in front of the person (set it farther than the person)"), icon="ERROR")
 
 
 class TRKAR_PT_depth_detail:
@@ -2924,18 +2983,18 @@ class TRKAR_PT_depth_detail:
         row.prop(settings, "depth_sync")
         sub = row.row(align=True)
         sub.active = settings.depth_sync
-        sub.prop(settings, "depth_sync_offset", text="補正 ms")
+        sub.prop(settings, "depth_sync_offset", text=_t("Correction ms"))
         if settings.depth_sync and depth_in.running and depth_in.frames_shown:
             if depth_in.sync_lag is not None:
-                col.label(text="映像と同期中 (深度 %+.0f ms)" % -depth_in.sync_lag, icon="CHECKMARK")
+                col.label(text=_t("Synced with video (depth %+.0f ms)") % -depth_in.sync_lag, icon="CHECKMARK")
             elif not ndi_in.running:
-                col.label(text="実写を NDI 受信すると揃えられます", icon="INFO")
+                col.label(text=_t("Receive the video over NDI to align"), icon="INFO")
             else:
-                col.label(text="時刻が合わないので揃えていません (trkAR を更新)", icon="INFO")
+                col.label(text=_t("Not aligning because the clocks don't match (update trkAR)"), icon="INFO")
 
 
 class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
-    bl_label = "録画・テイク"
+    bl_label = "Recording & Takes"
     bl_order = 3
 
     def draw_header(self, context):
@@ -2949,9 +3008,9 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
             row.operator("trkar.take_rec_stop", icon="PAUSE", text="%d:%02d" % (seconds // 60, seconds % 60))
         elif export_progress() is not None:
             done, total, _remaining = export_progress()
-            self.layout.label(text="書き出し %d/%d" % (done, total))
+            self.layout.label(text=_t("Exporting %d/%d") % (done, total))
         elif player.active:
-            self.layout.label(text="再生中")
+            self.layout.label(text=_t("Playing"))
 
     def draw(self, context):
         layout = self.layout
@@ -2962,23 +3021,23 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
             row.scale_y = 1.4
             seconds = int(recorder.seconds)
             row.operator("trkar.take_rec_stop", icon="PAUSE",
-                         text="録画停止  %d:%02d  (%d フレーム)" % (seconds // 60, seconds % 60, recorder.frames))
+                         text=_t("Stop Recording  %d:%02d  (%d frames)") % (seconds // 60, seconds % 60, recorder.frames))
             if recorder.slate_label:
-                layout.label(text="%s を録画中" % recorder.slate_label, icon="FILE_MOVIE")
+                layout.label(text=_t("Recording %s") % recorder.slate_label, icon="FILE_MOVIE")
             if recorder.dropped or recorder.errors:
-                layout.label(text="間引き %d / 書き込みエラー %d %s" % (recorder.dropped, recorder.errors,
+                layout.label(text=_t("Dropped %d / write errors %d %s") % (recorder.dropped, recorder.errors,
                                                                   recorder.last_error), icon="ERROR")
             return
         prefs = _prefs(context)
-        layout.label(text="次  %s   %s" % (_slate_label(prefs), prefs.slate_production or "-"), icon="FILE_MOVIE")
+        layout.label(text=_t("Next  %s   %s") % (_slate_label(prefs), prefs.slate_production or "-"), icon="FILE_MOVIE")
         row = layout.row(align=True)
         row.scale_y = 1.4
         row.operator("trkar.take_rec_start", icon="REC")
         row.prop(settings, "take_fps", text="")
         if not tracking.server.running:
-            layout.label(text="トラッキングが止まっているとカメラは動きません", icon="INFO")
+            layout.label(text=_t("The camera won't move while tracking is stopped"), icon="INFO")
         if not ndi_in.running and not player.active:
-            layout.label(text="NDI 受信 (実写) が止まっていると映像は録れません", icon="INFO")
+            layout.label(text=_t("Video can't be recorded while NDI receive (Video) is stopped"), icon="INFO")
 
         row = layout.row(align=True)
         row.enabled = not (recorder.recording or _export["running"])
@@ -2996,11 +3055,11 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
         progress = export_progress()
         if progress is not None:
             done, total, remaining = progress
-            text = "書き出し中 %d / %d" % (done, total)
+            text = _t("Exporting %d / %d") % (done, total)
             if remaining is not None:
-                text += "  残り約 %d 秒" % remaining
+                text += _t("  About %d s left") % remaining
             layout.label(text=text, icon="RENDER_ANIMATION")
-            layout.label(text="Esc で中止")
+            layout.label(text=_t("Esc to Cancel"))
         else:
             row = layout.row(align=True)
             row.operator("trkar.take_render", icon="RENDER_ANIMATION")
@@ -3015,26 +3074,30 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
             row.prop(settings, "take_use_range", toggle=True)
             sub = row.row(align=True)
             sub.active = settings.take_use_range
-            sub.prop(settings, "take_range_start", text="開始")
+            sub.prop(settings, "take_range_start", text=_t("Start"))
             if settings.take_range_mode == "DURATION":
-                sub.prop(settings, "take_range_seconds", text="秒")
+                sub.prop(settings, "take_range_seconds", text=_t("Seconds"))
             else:
-                sub.prop(settings, "take_range_end", text="終了")
+                sub.prop(settings, "take_range_end", text=_t("End"))
             if settings.take_use_range:
                 layout.row(align=True).prop(settings, "take_range_mode", expand=True)
+            # 背景の CG の時間とのずれ (タイムラインで CG の合わせたい所に移って、範囲の頭をそこへ)
+            row = layout.row(align=True)
+            row.operator("trkar.take_align_here", icon="NEXT_KEYFRAME")
+            row.prop(settings, "take_time_offset", text=_t("CG Time Offset"))
             count = _export_count(context, settings)
             if count is not None:
-                text = "%d フレーム (%.2f 秒)" % count
+                text = _t("%d frames (%.2f s)") % count
                 if settings.take_use_range:
                     first, last = _take_range(settings, context.scene.render,
                                               player.info["frame_start"], player.info["frame_end"])
-                    text = "%d〜%d  " % (first, last) + text
+                    text = _t("%d–%d  ") % (first, last) + text
                     wanted = round(settings.take_range_seconds * context.scene.render.fps
                                    / context.scene.render.fps_base)
                     if settings.take_range_mode == "DURATION" and count[0] < max(1, wanted):
-                        text += "  テイクの終わりで切れます"
+                        text += _t("  Cut off at the end of the take")
                 if settings.take_render_size == "LTX" and count[0] > LTX_MAX_FRAMES:
-                    layout.label(text=text + "  LTX は %d フレームまで" % LTX_MAX_FRAMES, icon="ERROR")
+                    layout.label(text=text + _t("  LTX allows up to %d frames") % LTX_MAX_FRAMES, icon="ERROR")
                 else:
                     layout.label(text=text)
             if _export["message"]:
@@ -3044,8 +3107,10 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
                 _draw_hook(layout, context, take_path)
         if player.active:
             info = player.info
-            layout.label(text="%s  %d〜%d フレーム" % (info.get("name", ""), info["frame_start"], info["frame_end"]),
-                         icon="SEQUENCE")
+            text = _t("%s  frames %d–%d") % (info.get("name", ""), info["frame_start"], info["frame_end"])
+            if info.get("time_offset"):
+                text += _t(" (take %d–%d)") % (info["take_frame_start"], info["take_frame_end"])
+            layout.label(text=text, icon="SEQUENCE")
         if player.last_error:
             layout.label(text=player.last_error, icon="ERROR")
 
@@ -3079,7 +3144,7 @@ def _take_range(settings, render, first, last):
 
 
 class TRKAR_PT_take_slate(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "スレート・撮影情報"
+    bl_label = "Slate & Shoot Info"
     bl_parent_id = "TRKAR_PT_take"
     bl_options = set()
 
@@ -3097,50 +3162,50 @@ class TRKAR_PT_take_slate(_TrkARSubPanel, bpy.types.Panel):
                                                client.app_version, client.app_build)
             layout.label(text=text, icon="CAMERA_DATA")
         elif pose is not None:
-            layout.label(text="機種の情報 (/client/info) がまだ届いていません", icon="INFO")
+            layout.label(text=_t("Device info (/client/info) has not arrived yet"), icon="INFO")
         else:
-            layout.label(text="トラッキングを受信していないので機種は記録されません", icon="INFO")
+            layout.label(text=_t("Device model is not recorded because tracking is not being received"), icon="INFO")
 
 
 class TRKAR_PT_take_anchor(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "背景のオフセット"
+    bl_label = "Background Offset"
     bl_parent_id = "TRKAR_PT_take"
 
     def draw_header_preset(self, context):
         if bpy.data.objects.get(take.ANCHOR_NAME) is not None:
-            self.layout.label(text="オフセット中")
+            self.layout.label(text=_t("Offset Active"))
 
     def draw(self, context):
         layout = self.layout
         anchor = bpy.data.objects.get(take.ANCHOR_NAME)
         if anchor is None:
-            layout.label(text="テイクは録ったときの位置で再生されます", icon="INFO")
+            layout.label(text=_t("Takes play back at the position where they were recorded"), icon="INFO")
             layout.operator("trkar.take_anchor_add", icon="EMPTY_ARROWS")
             return
-        layout.label(text="人の居る所 (床の高さ) と、カメラの見る向き (Y の矢印)")
+        layout.label(text=_t("Where the person stands (floor height) and the camera's facing (Y arrow)"))
         col = layout.column(align=True)
         col.prop(anchor, "location", text="")
-        layout.prop(anchor, "rotation_euler", index=2, text="向き (Z)")
+        layout.prop(anchor, "rotation_euler", index=2, text=_t("Facing (Z)"))
         row = layout.row(align=True)
         row.operator("trkar.take_anchor_cursor", icon="PIVOT_CURSOR")
-        row.operator("trkar.take_anchor_add", icon="LOOP_BACK", text="元の位置")
+        row.operator("trkar.take_anchor_add", icon="LOOP_BACK", text=_t("Original Position"))
         layout.operator("trkar.take_anchor_remove", icon="X")
         if not player.active:
-            layout.label(text="オフセットが効くのはテイクの再生・書き出しの間だけ", icon="INFO")
+            layout.label(text=_t("The offset applies only while playing or exporting a take"), icon="INFO")
         else:
-            layout.label(text="置いた場所はこのテイクに残る (ほかのテイクには効かない)", icon="INFO")
+            layout.label(text=_t("The placement stays with this take (doesn't affect other takes)"), icon="INFO")
             if player.previous_anchor is not None:
                 layout.operator("trkar.take_anchor_previous", icon="RECOVER_LAST")
 
 
 class TRKAR_PT_take_bridge(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "通信ポート (自動化)"
+    bl_label = "Automation Port"
     bl_parent_id = "TRKAR_PT_take"
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw_header_preset(self, context):
         if bridge.running():
-            self.layout.label(text="開いています")
+            self.layout.label(text=_t("Opened"))
 
     def draw(self, context):
         layout = self.layout
@@ -3155,7 +3220,7 @@ class TRKAR_PT_take_bridge(_TrkARSubPanel, bpy.types.Panel):
 
 
 class TRKAR_PT_take_settings(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "録画・書き出しの設定"
+    bl_label = "Recording & Export Settings"
     bl_parent_id = "TRKAR_PT_take"
 
     def draw(self, context):
@@ -3173,14 +3238,14 @@ class TRKAR_PT_take_settings(_TrkARSubPanel, bpy.types.Panel):
         sub.active = settings.take_render_mode == "VIEWPORT"
         sub.prop(settings, "take_render_samples")
         box = layout.box()
-        box.label(text="テイクのあとに流すコマンド (連携)", icon="SCRIPT")
+        box.label(text=_t("Command to run after a take (integration)"), icon="SCRIPT")
         _draw_hook_settings(box, _prefs(context))
 
 
 
 
 class TRKAR_PT_ndi_out(_TrkARSubPanel, bpy.types.Panel):
-    bl_label = "NDI 送出"
+    bl_label = "NDI Output"
     bl_order = 4
 
     def draw_header(self, context):
@@ -3188,7 +3253,7 @@ class TRKAR_PT_ndi_out(_TrkARSubPanel, bpy.types.Panel):
 
     def draw_header_preset(self, context):
         running = _ndi_out_running()
-        _header_toggle(self.layout, running, "trkar.ndi_out_start", "trkar.ndi_out_stop", "送出中" if running else "")
+        _header_toggle(self.layout, running, "trkar.ndi_out_start", "trkar.ndi_out_stop", _t("Sending") if running else "")
 
     def draw(self, context):
         layout = self.layout
@@ -3219,22 +3284,22 @@ def _draw_camera_out(layout, context, settings):
     col.prop(settings, "ndi_transparent")
     if ndi_output.running:
         this_view = context.area is not None and context.area.as_pointer() == ndi_output.area_pointer
-        layout.label(text="送出元: %s" % ("このビュー" if this_view else "別のビュー"))
-        layout.label(text="%d フレーム / 受信者 %d" % (ndi_output.frames_sent, ndi_output.sender.connections()))
-        layout.label(text="描画 %.1f fps / 送出 %.1f fps (設定 %.3g)" % (
+        layout.label(text=_t("Output source: %s") % (_t("this view") if this_view else _t("another view")))
+        layout.label(text=_t("%d frames / receivers %d") % (ndi_output.frames_sent, ndi_output.sender.connections()))
+        layout.label(text=_t("Draw %.1f fps / output %.1f fps (setting %.3g)") % (
             ndi_output.draw_rate.fps, ndi_output.send_rate.fps, ndi_output.fps))
-        layout.label(text="描画 %.1f ms / 読み戻し %.1f ms" % (ndi_output.draw_ms, ndi_output.read_ms))
+        layout.label(text=_t("Draw %.1f ms / readback %.1f ms") % (ndi_output.draw_ms, ndi_output.read_ms))
         if ndi_output.last_error:
             layout.label(text=ndi_output.last_error, icon="ERROR")
     else:
-        layout.label(text="このビューの表示モードで描画されます", icon="INFO")
+        layout.label(text=_t("Drawn in this view's shading mode"), icon="INFO")
 
 
 def _draw_screen_out(layout, context, settings, mode):
     os_mode = mode == "SCREEN_OS"
     output = os_screen_out if os_mode else screen_out
     if not (os_screen.supported() if os_mode else screen_output.supported()):
-        layout.label(text="macOS 14 以降で使えます" if os_mode else "Blender 5.3 以降で使えます", icon="ERROR")
+        layout.label(text=_t("Requires macOS 14 or later") if os_mode else _t("Available in Blender 5.3 or later"), icon="ERROR")
         return
     col = layout.column(align=True)
     col.enabled = not output.running
@@ -3246,28 +3311,28 @@ def _draw_screen_out(layout, context, settings, mode):
         col.prop(settings, "screen_ndi_cursor")
     if output.running and output.area_pointer:
         this_view = context.area is not None and context.area.as_pointer() == output.area_pointer
-        layout.label(text="送出元: %s" % ("このエリア" if this_view else "別のエリア"))
+        layout.label(text=_t("Output source: %s") % (_t("this area") if this_view else _t("another area")))
     if os_mode and output.running:
-        layout.label(text="%d x %d / 送出 %d fps (設定 %.3g) / 受信者 %d" % (
+        layout.label(text=_t("%d x %d / output %d fps (setting %.3g) / receivers %d") % (
             output.width, output.height, output.fps, settings.screen_ndi_fps, output.connections))
     elif output.running:
-        layout.label(text="%d x %d / %d フレーム / 受信者 %d" % (
+        layout.label(text=_t("%d x %d / %d frames / receivers %d") % (
             output.width, output.height, output.frames_sent, output.sender.connections()))
-        layout.label(text="読み取り %.1f fps / 送出 %.1f fps (設定 %.3g)" % (
+        layout.label(text=_t("Capture %.1f fps / output %.1f fps (setting %.3g)") % (
             output.capture_rate.fps, output.send_rate.fps, output.fps))
-        layout.label(text="読み取り %.1f ms / 送信 %.1f ms" % (output.capture_ms, output.send_ms))
+        layout.label(text=_t("Capture %.1f ms / send %.1f ms") % (output.capture_ms, output.send_ms))
         # 止まった (ボコッとなった) ときに、Blender で止まったのかを見分ける。ここが小さいのに受け手で止まるならネットワーク
-        layout.label(text="いちばん長い間 (5 秒): 読み取り %.0f ms / 送出 %.0f ms" % (
+        layout.label(text=_t("Longest gap (5 s): capture %.0f ms / output %.0f ms") % (
             output.capture_rate.max_gap_ms, output.send_rate.max_gap_ms))
     if output.last_error:
         for line in _wrap(output.last_error, 40):
             layout.label(text=line, icon="ERROR")
     if not output.running:
         if os_mode:
-            layout.label(text="シーンの fps が落ちにくい (遅れは少し増える)", icon="INFO")
+            layout.label(text=_t("Scene fps drops less (slightly more delay)"), icon="INFO")
         else:
-            layout.label(text="遅れが小さい (重いシーンでは fps が落ちる)", icon="INFO")
-            layout.label(text="マウスカーソルは映りません")
+            layout.label(text=_t("Lower delay (fps drops in heavy scenes)"), icon="INFO")
+            layout.label(text=_t("The mouse cursor is not captured"))
 
 
 def _wrap(text, width):
@@ -3318,14 +3383,14 @@ def _on_load_post(*_args):
     try:
         legacy.migrate()
     except Exception as exc:  # noqa: BLE001  引き継げなくても開くのは止めない
-        print("trkAR: 古い名前のデータを引き継げません: %s" % exc)
+        print(_t("trkAR: can't carry over data with old names: %s") % exc)
     # 前の版で保存した .blend は、受信前の画像が黒 (不透明) で、板が CG を隠していた。透明に戻す
     try:
         image = bpy.data.images.get(ndi_input.IMAGE_NAME)
         if image is not None and image.source == "GENERATED" and tuple(image.generated_color) != ndi_input.BLANK_COLOR:
             ndi_input.blank_live_images((ndi_input.IMAGE_NAME,))
     except Exception as exc:  # noqa: BLE001
-        print("trkAR: 受信前の画像を透明にできません: %s" % exc)
+        print(_t("trkAR: can't make the pre-receive image transparent: %s") % exc)
 
 
 @persistent
@@ -3337,7 +3402,7 @@ def _on_save_pre(*_args):
     try:
         player.save_placement()
     except Exception as exc:
-        print("trkAR: テイクの置き場を残せません: %s" % exc)
+        print(_t("trkAR: can't keep the take anchor: %s") % exc)
 
 
 classes = (
@@ -3360,7 +3425,6 @@ classes = (
     TRKAR_OT_ndi_out_stop,
     TRKAR_OT_receive_start,
     TRKAR_OT_receive_stop,
-    view_controller.TRKAR_OT_view_controller,
     TRKAR_MT_ndi_sources,
     TRKAR_MT_depth_sources,
     TRKAR_OT_ndi_in_set_source,
@@ -3378,6 +3442,7 @@ classes = (
     TRKAR_OT_slate_unset,
     TRKAR_OT_take_rec_stop,
     TRKAR_OT_take_play,
+    TRKAR_OT_take_align_here,
     TRKAR_OT_take_live,
     TRKAR_OT_take_step,
     TRKAR_OT_take_anchor_add,
@@ -3407,6 +3472,7 @@ classes = (
 
 # 社内向け (STUDIO のときだけ登録する。親パネルより後ろに置く)
 studio_classes = ()
+studio_early_classes = ()
 
 
 def _scene_tab_panel(cls):
@@ -3449,15 +3515,18 @@ def _sync_sidebar(show):
 
 def register():
     panels = set(_panels())
-    for cls in classes + studio_classes:
+    for cls in studio_early_classes + classes + studio_classes:
         if cls not in panels:
             bpy.utils.register_class(cls)
     addon = bpy.context.preferences.addons.get(__package__)
+    # 表示言語 (設定のクラスを登録したあとに読む)
+    i18n.register(getattr(addon.preferences, "ui_language", "AUTO") if addon is not None else "AUTO")
     _sync_sidebar(addon.preferences.show_sidebar if addon is not None else True)
     _ui["scene"] = [_scene_tab_panel(cls) for cls in _panels()]
     for cls in _ui["scene"]:
         bpy.utils.register_class(cls)
     bpy.types.Scene.trkar = PointerProperty(type=TRKAR_Settings)
+    view_controller.register()
     tracking.hold = lambda: player.active
     tracking.rec_hook = _on_remote_rec
     tracking.focus_hook = _autofocus_distance
@@ -3472,6 +3541,7 @@ def register():
 
 
 def unregister():
+    i18n.unregister()
     if recorder.recording:
         recorder.stop(bpy.context)
     player.stop(bpy.context.scene)
@@ -3501,12 +3571,13 @@ def unregister():
         bpy.app.handlers.save_pre.remove(_on_save_pre)
     if _on_load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_load_post)
+    view_controller.unregister()
     del bpy.types.Scene.trkar
     for cls in reversed(_ui["scene"]):
         bpy.utils.unregister_class(cls)
     _ui["scene"] = []
     _sync_sidebar(False)
     panels = set(_panels())
-    for cls in reversed(classes + studio_classes):
+    for cls in reversed(studio_early_classes + classes + studio_classes):
         if cls not in panels:
             bpy.utils.unregister_class(cls)

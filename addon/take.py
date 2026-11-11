@@ -32,6 +32,11 @@ from datetime import datetime
 import bpy
 import numpy as np
 from mathutils import Euler, Matrix, Quaternion, Vector
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 try:
     from . import tracking
@@ -81,7 +86,7 @@ def write_image(path, data):
         spec.attribute("Compression", "jpeg:92")
     out = oiio.ImageOutput.create(path)
     if out is None or not out.open(path, spec):
-        raise OSError("書けません: %s" % path)
+        raise OSError(_t("Cannot write: %s") % path)
     try:
         out.write_image(data)
     finally:
@@ -97,7 +102,7 @@ def read_image(path):
     config.attribute("oiio:UnassociatedAlpha", 1)
     inp = oiio.ImageInput.open(path, config)
     if inp is None:
-        raise OSError("読めません: %s" % path)
+        raise OSError(_t("Cannot read: %s") % path)
     try:
         pixels = inp.read_image(0, 0, 0, inp.spec().nchannels, "uint8")
     finally:
@@ -118,6 +123,73 @@ def _frame_name(frame):
 def load_info(path):
     with open(os.path.join(path, "take.json"), encoding="utf-8") as f:
         return json.load(f)
+
+
+# ---- テイクと背景の CG の時間のずれ (take.json の time_offset、コマ) ----
+# テイクのフォルダの中身 (コマ番号の名前の映像・深度、actions.json) はテイクのコマのまま。Blender の中では
+# タイムラインを背景の CG の時間 (= テイクのコマ + ずれ) で回し、ファイルを読む所だけテイクのコマに直す。
+# 録ったアクション (カメラの動き・レンズ) はキーをずれの分だけ動かして当てる (動かした量はアクションに控える)。
+
+TIME_OFFSET_KEY = "trkar_time_offset"
+
+
+def time_offset(info):
+    try:
+        return int((info or {}).get("time_offset") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def shifted_info(info):
+    """take.json の内容を、背景の CG の時間にしたもの (frame_start / frame_end にずれを足す)。
+    元のコマは take_frame_start / take_frame_end、ずれは time_offset に入る"""
+    offset = time_offset(info)
+    shifted = dict(info)
+    shifted["take_frame_start"] = info.get("frame_start", 1)
+    shifted["take_frame_end"] = info.get("frame_end", shifted["take_frame_start"])
+    shifted["frame_start"] = shifted["take_frame_start"] + offset
+    shifted["frame_end"] = shifted["take_frame_end"] + offset
+    shifted["time_offset"] = offset
+    return shifted
+
+
+def take_frame(info, frame):
+    """背景の CG のコマ → テイクのコマ (ファイルの名前の番号)"""
+    return frame - time_offset(info)
+
+
+def save_time_offset(path, offset):
+    """take.json の time_offset を書き換える (0 なら消す)。変わらなければ書かない"""
+    try:
+        info = load_info(path)
+    except (OSError, ValueError):
+        return
+    if time_offset(info) == offset and (offset or "time_offset" not in info):
+        return
+    if offset:
+        info["time_offset"] = int(offset)
+    else:
+        info.pop("time_offset", None)
+    with open(os.path.join(path, "take.json"), "w", encoding="utf-8") as f:
+        json.dump(info, f, ensure_ascii=False, indent=2)
+
+
+def shift_action(action, offset):
+    """アクションのキーを、テイクのコマ + offset に置き直す (前に動かした量はアクションの印で分かる)"""
+    if action is None:
+        return
+    delta = offset - int(action.get(TIME_OFFSET_KEY, 0))
+    if delta:
+        for fc in _action_fcurves(action):
+            for point in fc.keyframe_points:
+                point.co.x += delta
+                point.handle_left.x += delta
+                point.handle_right.x += delta
+            fc.update()
+    if offset:
+        action[TIME_OFFSET_KEY] = int(offset)
+    elif TIME_OFFSET_KEY in action:
+        del action[TIME_OFFSET_KEY]
 
 
 def slate_label(scene_no, cut_no, take_no):
@@ -704,7 +776,7 @@ class Recorder:
         settings = scene.trkar
         camera = _camera_of(scene)
         if camera is None:
-            raise RuntimeError("録画するカメラがありません")
+            raise RuntimeError(_t("No camera to record"))
         name = time.strftime("take_%Y%m%d_%H%M%S")
         path = os.path.join(folder, name)
         for sub in ("video", "depth", "alpha", os.path.join(STAGING, "video"), os.path.join(STAGING, "alpha"),
@@ -780,7 +852,7 @@ class Recorder:
                 window = windows[0]
                 with bpy.context.temp_override(window=window, screen=window.screen):
                     bpy.ops.screen.animation_play()
-                print("trkAR: REC で再生が始まっていなかったので始め直しました")
+                print(_t("trkAR: playback had not started on REC, so it was restarted"))
                 return 0.2
         if playing:
             self._stopped_playing_at = None
@@ -958,14 +1030,14 @@ class Player:
         info = load_info(path)
         camera = bpy.data.objects.get(info.get("camera", "")) or _camera_of(scene)
         if camera is None:
-            raise RuntimeError("テイクのカメラがありません")
+            raise RuntimeError(_t("No take camera"))
         # .blend にアクションが残っていればそれを使い、なければテイクフォルダの
         # actions.json から復元する (別の .blend で開いた、保存し忘れた等でも再生できる)。
         action = _load_or_restore_action(path, info.get("action", ""), "action")
         lens_action = _load_or_restore_action(path, info.get("lens_action", ""), "lens_action")
         if action is None:
             raise RuntimeError(
-                "テイクのアクション %s がこの .blend にも actions.json にもありません"
+                _t("Take action %s is in neither this .blend nor actions.json")
                 % info.get("action")
             )
         # 置き場の子のまま保存された .blend (再生中に保存) なら、元の親は無いものとして戻す
@@ -980,6 +1052,10 @@ class Player:
             "parent_inverse": Matrix() if leftover else camera.matrix_parent_inverse.copy(),
             "rotation_mode": camera.rotation_mode,
         }
+        # 背景の CG の時間にする (ずれがあれば、録ったアクションのキーもその分動かす)
+        info = shifted_info(info)
+        shift_action(action, info["time_offset"])
+        shift_action(lens_action, info["time_offset"])
         # 回転の F カーブと同じ回転モードにする (別の .blend のオイラーのカメラだと、
         # クォータニオンで録った向きが効かず位置しか動かない)
         paths = {fc.data_path for fc in _action_fcurves(action)}
@@ -1021,6 +1097,25 @@ class Player:
             save_placement(self.path, {"matrix": _matrix_list(anchor.matrix_world),
                                        "front_distance": self.front_distance})
 
+    def set_time_offset(self, scene, offset):
+        """再生中のテイクの、背景の CG とのずれを変える (take.json に残す)。動かしたコマ数を返す"""
+        if self.info is None:
+            return 0
+        delta = int(offset) - self.info["time_offset"]
+        if not delta:
+            return 0
+        camera = bpy.data.objects.get(self.info.get("camera", "")) or _camera_of(scene)
+        for id_data in (camera, camera.data if camera is not None else None):
+            ad = id_data.animation_data if id_data is not None else None
+            if ad is not None and ad.action is not None:
+                shift_action(ad.action, int(offset))
+        self.info = dict(self.info, time_offset=int(offset), frame_start=self.info["frame_start"] + delta,
+                         frame_end=self.info["frame_end"] + delta)
+        save_time_offset(self.path, int(offset))
+        scene.frame_start, scene.frame_end = self.info["frame_start"], self.info["frame_end"]
+        self._loaded = None
+        return delta
+
     def stop(self, scene):
         if self._on_frame in bpy.app.handlers.frame_change_pre:
             bpy.app.handlers.frame_change_pre.remove(self._on_frame)
@@ -1057,7 +1152,7 @@ class Player:
         if frame == self._loaded:
             return
         self._loaded = frame
-        name = _frame_name(frame)
+        name = _frame_name(take_frame(info, frame))
         try:
             if info.get("video", True):
                 video = os.path.join(self.path, "video", name + ".jpg")

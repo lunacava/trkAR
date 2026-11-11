@@ -15,6 +15,11 @@ import gpu
 import numpy as np
 
 from . import ndi
+try:
+    from .i18n import _t
+except ImportError:  # アドオンの外から単独で読まれたとき (render_clay.py・GTN のノードなど)。訳さない
+    def _t(message):
+        return message
 
 
 def _as_rgba8(buffer, width, height):
@@ -148,7 +153,7 @@ class NDIOutput:
         scene = context.scene
         camera = scene.trkar.camera or scene.camera
         if camera is None or camera.type != "CAMERA":
-            self.last_error = "送出するカメラがありません"
+            self.last_error = _t("No camera to output")
             return
         self._last_draw = now
         self._drawing = True

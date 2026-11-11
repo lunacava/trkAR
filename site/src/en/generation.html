@@ -8,8 +8,8 @@
 <h3>How to make them</h3>
 <ol>
   <li>In the Blender add-on <span class="mono">trkAR Camera</span> 0.10.21 or later, select a take (<a href="start.html">Getting started</a>)</li>
-  <li>Press <span class="mono">生成用の素材を書き出す</span> (Write files for generation) in <span class="mono">録画・テイク</span> (Recording / Takes). The number next to it is the long side of the reference video (960 by default); the camera icon turns the location layout on or off</li>
-  <li>If <span class="mono">範囲</span> (Range) is set, only that range is written. Match it to the model's length limit (often 5–10 seconds)</li>
+  <li>Press <span class="mono">Export Generation Inputs</span> in <span class="mono">Recording &amp; Takes</span>. The number next to it is the long side of the reference video (960 by default); the camera icon turns the location layout on or off</li>
+  <li>If <span class="mono">Range</span> is set, only that range is written. Match it to the model's length limit (often 5–10 seconds)</li>
   <li><span class="mono">for_generation/</span> is created in the take's folder. Writing again keeps the previous one as <span class="mono">for_generation_&lt;date&gt;/</span></li>
 </ol>
 
@@ -28,7 +28,7 @@
 
 <h3>Tips</h3>
 <ul>
-  <li><b>The person outline needs a person mask</b>. When recording, use the iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask), or the AI cut-out on the PC (<span class="mono">RVM で切り抜く</span>, Cut out with RVM; see "Cutting out people" in <a href="start.html">Getting started</a>). RVM gives a finer outline. Without a mask, the reference video shows only the clay set</li>
+  <li><b>The person outline needs a person mask</b>. When recording, use the iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask), or the AI cut-out on the PC (<span class="mono">Matte with RVM</span>; see "Cutting out people" in <a href="start.html">Getting started</a>). RVM gives a finer outline. Without a mask, the reference video shows only the clay set</li>
   <li><b>Match the fps</b>: the reference video keeps the take's fps (recording is 24 fps by default). If the model assumes another fps, the speed changes, so record at a rate that suits the model</li>
   <li><b>The aspect ratio</b> follows the Blender scene's output. If the model only accepts certain ratios, set the scene's output resolution first</li>
   <li><b>Before sending a photo of a person to an external service</b>, get the consent of the person in it</li>

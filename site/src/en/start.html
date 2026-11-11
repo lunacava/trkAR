@@ -1,6 +1,6 @@
 <h2>Getting started</h2>
 <p>How to drive a Blender camera with the camera move you shoot with trkAR on an iPhone or iPad, and record and export takes. The app's screen and buttons are explained in the <a href="app.html">App guide</a>.</p>
-<p class="note">The Blender add-on's labels are in Japanese. This page shows the Japanese label with its meaning, for example <span class="mono">trkAR 受信</span> (Receive).</p>
+<p class="note">The Blender add-on's labels are in English (0.11 and later). To use it in Japanese, set <span class="mono">Interface Language</span> in <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; trkAR Camera</span> to <span class="mono">日本語</span> (<span class="mono">Follow Blender</span>, the default, shows Japanese when Blender itself is in Japanese).</p>
 <figure class="diagram">
 <svg viewBox="0 0 720 330" role="img" aria-labelledby="d1t">
   <title id="d1t">What flows between trkAR on the iPhone and Blender on the PC</title>
@@ -34,7 +34,7 @@
     <text x="530" y="128" class="ds">walk through the CG set</text>
     <text x="530" y="162">● Live video screen</text>
     <text x="530" y="182" class="ds">puts people in the CG</text>
-    <text x="530" y="216">● NDI out</text>
+    <text x="530" y="216">● NDI Output</text>
     <text x="530" y="236" class="ds">sends the view back</text>
     <text x="530" y="270">● Records takes</text>
   </g>
@@ -75,7 +75,7 @@
     <text x="320" y="92" class="ds">camera follows iPhone</text>
     <text x="266" y="124" class="tag">iPhone</text><text x="320" y="124">CAM (live video)</text>
     <text x="320" y="146">MONI (watch the CG)</text>
-    <text x="320" y="166" class="ds">Blender: NDI out ▶</text>
+    <text x="320" y="166" class="ds">Blender: NDI Output ▶</text>
   </g>
   <g class="card">
     <rect x="490" y="10" width="220" height="170" rx="8"/>
@@ -90,10 +90,10 @@
   <g class="card">
     <rect x="10" y="220" width="220" height="170" rx="8"/>
     <text x="26" y="250" class="dn">4</text><text x="52" y="250" class="dh">Review</text>
-    <text x="26" y="282" class="tag">Blender</text><text x="80" y="282">Play take</text>
+    <text x="26" y="282" class="tag">Blender</text><text x="80" y="282">Play Take</text>
     <text x="80" y="302" class="ds">video and camera move</text>
     <text x="80" y="324">fix CG and lights</text>
-    <text x="80" y="346">Background offset</text>
+    <text x="80" y="346">Background Offset</text>
     <text x="80" y="366" class="ds">move where people are</text>
   </g>
   <g class="card">
@@ -107,8 +107,8 @@
   <g class="card">
     <rect x="490" y="220" width="220" height="170" rx="8"/>
     <text x="506" y="250" class="dn">6</text><text x="532" y="250" class="dh">For generation</text>
-    <text x="506" y="282" class="tag">Blender</text><text x="560" y="282">Write files for</text>
-    <text x="560" y="302">generation</text>
+    <text x="506" y="282" class="tag">Blender</text><text x="560" y="282">Export Generation</text>
+    <text x="560" y="302">Inputs</text>
     <text x="560" y="324" class="mono-s" style="font-size:11.5px">for_generation/</text>
     <text x="560" y="350" class="ds">to reference-based</text>
     <text x="560" y="368" class="ds">video models</text>
@@ -148,37 +148,37 @@
 <h3>4. Connect</h3>
 <ol>
   <li>In the 3D view, press <span class="mono">N</span> to open the sidebar and open the <span class="mono">trkAR</span> tab</li>
-  <li>Place the Blender camera where you want to shoot and press ▶ on <span class="mono">trkAR 受信</span> (Receive). Switch to the camera view (numpad <span class="mono">0</span>) and move the iPhone: the camera moves the same way</li>
-  <li>To use the live video, turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone name&gt; (trkAR)</span> as the live video (NDI) source in <span class="mono">trkAR 受信</span>. To keep only the person, also turn on the iPhone's <span class="mono">MASK</span> (or use RVM, see "Cutting out people" below). If nothing shows the live video yet, a screen is placed in front of the camera when receiving starts (it stays transparent until video arrives, so it never hides the CG)</li>
-  <li>To shoot while watching the CG on the iPhone, send the camera view with <span class="mono">NDI 送出</span> (NDI out) and choose <span class="mono">&lt;PC name&gt; (Blender (trkAR))</span> with <span class="mono">MONI</span> on the iPhone</li>
+  <li>Place the Blender camera where you want to shoot and press ▶ on <span class="mono">trkAR Receive</span>. Switch to the camera view (numpad <span class="mono">0</span>) and move the iPhone: the camera moves the same way</li>
+  <li>To use the live video, turn on <span class="mono">CAM</span> on the iPhone and choose <span class="mono">&lt;iPhone name&gt; (trkAR)</span> as the live video (NDI) source in <span class="mono">trkAR Receive</span>. To keep only the person, also turn on the iPhone's <span class="mono">MASK</span> (or use RVM, see "Cutting out people" below). If nothing shows the live video yet, a screen is placed in front of the camera when receiving starts (it stays transparent until video arrives, so it never hides the CG)</li>
+  <li>To shoot while watching the CG on the iPhone, send the camera view with <span class="mono">NDI Output</span> and choose <span class="mono">&lt;PC name&gt; (Blender (trkAR))</span> with <span class="mono">MONI</span> on the iPhone</li>
 </ol>
 
 <h3>Cutting out people (two ways)</h3>
 <p>To put the person from the live video into the CG, you need a cut-out of the person (alpha). There are two ways to get it, and both work the same afterwards.</p>
 <table class="compare">
   <tr><th></th><th>iPhone person mask</th><th>AI on the PC (RVM)</th></tr>
-  <tr><td>How</td><td>The iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask)</td><td><span class="mono">RVM で切り抜く</span> (Cut out with RVM) in the live video section of <span class="mono">trkAR 受信</span></td></tr>
+  <tr><td>How</td><td>The iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask)</td><td><span class="mono">Matte with RVM</span> in the live video section of <span class="mono">trkAR Receive</span></td></tr>
   <tr><td>Detail</td><td>Coarse (ARKit person mask, about 256×192)</td><td>Fine. Even hair is cut out with soft edges</td></tr>
   <tr><td>Setup</td><td>None</td><td>Install the relay (<a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte</a>) on the PC, with Python and the RVM models</td></tr>
   <tr><td>PC</td><td>Any</td><td>Mac: Apple silicon (Core ML). Windows / Linux: a GPU (NVIDIA CUDA or DirectML). A weak GPU is too slow for real time</td></tr>
   <tr><td>Delay</td><td>Almost none</td><td>About +50 ms (30 fps on a Mac mini M4)</td></tr>
 </table>
-<p>To set up the RVM relay, get this repository (<span class="mono">git clone https://github.com/lunacava/trkAR.git</span>, or Code &gt; Download ZIP on GitHub) and follow <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">the tools/matte README</a>. Then set <span class="mono">RVM 中継のフォルダ</span> (RVM relay folder) in Blender's <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; trkAR Camera</span> to your local <span class="mono">tools/matte</span>. With <span class="mono">受信開始で切り抜きも始める</span> (start cut-out with Receive) on, it starts together with ▶ on <span class="mono">trkAR 受信</span>.</p>
+<p>To set up the RVM relay, get this repository (<span class="mono">git clone https://github.com/lunacava/trkAR.git</span>, or Code &gt; Download ZIP on GitHub) and follow <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">the tools/matte README</a>. Then set <span class="mono">RVM Relay Folder</span> in Blender's <span class="mono">Edit &gt; Preferences &gt; Add-ons &gt; trkAR Camera</span> to your local <span class="mono">tools/matte</span>. With <span class="mono">Start Matte on Receive</span> on, it starts together with ▶ on <span class="mono">trkAR Receive</span>.</p>
 
 <h3>5. Record and export</h3>
 <ol>
-  <li><span class="mono">REC</span> in <span class="mono">録画・テイク</span> (Recording / Takes), or REC on the iPhone, records the camera move, live video and depth while the timeline plays. Press it again or stop playback to finish</li>
-  <li><span class="mono">テイクを再生</span> (Play take) plays a take back so you can fix the CG and lights. <span class="mono">ライブに戻る</span> (Back to live) returns to receiving</li>
-  <li><span class="mono">書き出し</span> (Export) writes the camera view to <span class="mono">render.mp4</span></li>
-  <li>To hand it to a video generation AI, <span class="mono">生成用の素材を書き出す</span> (Write files for generation) makes the intermediate files → <a href="generation.html">Files for video generation</a></li>
+  <li><span class="mono">REC</span> in <span class="mono">Recording &amp; Takes</span>, or REC on the iPhone, records the camera move, live video and depth while the timeline plays. Press it again or stop playback to finish</li>
+  <li><span class="mono">Play Take</span> plays a take back so you can fix the CG and lights. <span class="mono">Back to Live</span> returns to receiving</li>
+  <li><span class="mono">Export</span> writes the camera view to <span class="mono">render.mp4</span></li>
+  <li>To hand it to a video generation AI, <span class="mono">Export Generation Inputs</span> makes the intermediate files → <a href="generation.html">Files for video generation</a></li>
 </ol>
 <p>Takes are kept as <span class="mono">take_&lt;date&gt;_&lt;time&gt;/</span> in <span class="mono">trkar_takes/</span> next to the saved .blend.</p>
 
 <h3>Troubleshooting</h3>
 <table>
   <tr><th>Problem</th><th>Check</th></tr>
-  <tr><td>The camera does not move</td><td>If the panel's packet counter (<span class="mono">受信 n 件 / UDP m</span>) stays at 0: Blender's local network permission, the PC IP Address and Port on the iPhone, and the same network. If <span class="mono">姿勢 ○ Hz</span> (pose rate) shows a number, poses are arriving</td></tr>
-  <tr><td>The CG floor and the real floor do not match</td><td>Is the floor set on the iPhone (the panel says <span class="mono">床が未設定</span>, floor not set, otherwise)? Aim the crosshair at the floor and SET GND again</td></tr>
+  <tr><td>The camera does not move</td><td>If the panel's packet counter (<span class="mono">Received n / UDP m</span>) stays at 0: Blender's local network permission, the PC IP Address and Port on the iPhone, and the same network. If <span class="mono">Pose ○ Hz</span> shows a number, poses are arriving</td></tr>
+  <tr><td>The CG floor and the real floor do not match</td><td>Is the floor set on the iPhone (the panel says <span class="mono">iPhone floor not set</span> otherwise)? Aim the crosshair at the floor and SET GND again</td></tr>
   <tr><td>No NDI sources</td><td>Is NDI Tools installed? Same network? Office and school Wi-Fi often blocks traffic between devices</td></tr>
   <tr><td>Video stutters or lags</td><td>Use wired Ethernet for the iPhone / iPad and the PC. Set CAM Resolution and MONI Resolution to Low on the iPhone. Cool the iPhone if it shows HOT</td></tr>
   <tr><td>The live video is gray or white</td><td>The 3D view is in Solid mode. Switch to Material Preview</td></tr>

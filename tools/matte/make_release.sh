@@ -17,7 +17,9 @@ MODELS=(
   "rvm_mobilenetv3_fp32.onnx"
 )
 mkdir -p "$PKG/models" "$PKG/THIRD_PARTY"
-cp "$HERE/trkar_matte.py" "$HERE/README.md" "$HERE/LICENSE" "$PKG/"
+cp "$HERE/trkar_matte.py" "$HERE/README.md" "$HERE/LICENSE" "$HERE/setup.sh" "$HERE/setup.ps1" "$PKG/"
+# NDI の呼び出し (アドオンの ndi.py。bpy なし・同じ GPL-3.0)。zip だけで動くように同梱する
+cp "$ROOT/addon/ndi.py" "$PKG/"
 for name in "${MODELS[@]}"; do
   curl -sfL -o "$PKG/models/$name" "$RVM/releases/download/v1.0.0/$name"
 done

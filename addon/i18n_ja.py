@@ -592,6 +592,13 @@ JA_PUBLIC = {
     "After Generation Inputs": "生成用の素材のあと",
     "Run the command after Export Generation Inputs writes for_generation/ (event = for_generation). Use it to send the inputs to a video generation service or your own cloud": "生成用の素材を書き出して for_generation/ ができたら、コマンドを流す (event = for_generation)。素材を動画生成のサービスや自分のクラウドに送るときに使う",
     "generation inputs": "生成用の素材",
+    "Set Up RVM Relay": "RVM の中継を準備",
+    "Prepare the RVM relay on this PC: downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, about 100–300 MB) from their official sources into the relay folder's .venv. Takes a few minutes. Needed once": "この PC で RVM の中継を使えるようにする。Python 3.12 とライブラリ (Core ML か ONNX Runtime、100〜300MB ほど) を、それぞれの配布元から中継のフォルダの .venv に落とす。数分かかる。最初の 1 回だけ",
+    "Setting up the RVM relay (a few minutes)": "RVM の中継を準備しています (数分)",
+    "Setting up the RVM relay…": "RVM の中継を準備しています…",
+    "No setup script (setup.sh / setup.ps1) in %s": "%s に準備のスクリプト (setup.sh / setup.ps1) がありません",
+    "The setup exited (%d)": "準備が止まりました (%d)",
+    "The RVM relay is not set up yet. Press \"Set Up RVM Relay\" (%s)": "RVM の中継がまだ準備されていません。「RVM の中継を準備」を押してください (%s)",
 }
 JA_STUDIO = {}
 JA = dict(JA_PUBLIC, **JA_STUDIO)

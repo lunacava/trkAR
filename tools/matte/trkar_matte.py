@@ -32,8 +32,9 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Blender アドオンの ndi.py を使う。開発のリポジトリは blender/trkar_camera、公開のリポジトリは addon
-for _addon in (os.path.join(HERE, "..", "..", "blender", "trkar_camera"), os.path.join(HERE, "..", "..", "addon")):
+# Blender アドオンの ndi.py を使う。Releases の zip は同じフォルダに同梱、開発のリポジトリは blender/trkar_camera、
+# 公開のリポジトリは addon
+for _addon in (HERE, os.path.join(HERE, "..", "..", "blender", "trkar_camera"), os.path.join(HERE, "..", "..", "addon")):
     if os.path.isfile(os.path.join(_addon, "ndi.py")):
         sys.path.insert(0, _addon)
         break

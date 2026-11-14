@@ -53,6 +53,7 @@ tracking.video = ndi_in
 tracking.depth = depth_in
 # RVM の切り抜きの中継 (別プロセスの tools/matte/trkar_matte.py)
 matte_relay = matte.MatteRelay()
+matte_setup = matte.MatteSetup()
 recorder = take.Recorder(ndi_in, depth_in)
 player = take.Player(ndi_in, depth_in)
 
@@ -1049,6 +1050,37 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
         bpy.app.timers.register(_switch_to_matte, first_interval=1.0)
         _ensure_video_shown(self, context)
         return {"FINISHED"}
+
+
+class TRKAR_OT_matte_setup(bpy.types.Operator):
+    bl_idname = "trkar.matte_setup"
+    bl_label = "Set Up RVM Relay"
+    bl_description = ("Prepare the RVM relay on this PC: downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, "
+                      "about 100–300 MB) from their official sources into the relay folder's .venv. Takes a few minutes. "
+                      "Needed once")
+
+    def execute(self, context):
+        folder = _matte_folder(context)
+        if folder is None:
+            self.report({"ERROR"}, _t("trkar_matte.py not found. Set \"RVM Relay Folder\" in the add-on preferences to tools/matte"))
+            return {"CANCELLED"}
+        try:
+            matte_setup.start(folder)
+        except Exception as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        if not bpy.app.timers.is_registered(_redraw_while_setup):
+            bpy.app.timers.register(_redraw_while_setup, first_interval=1.0)
+        self.report({"INFO"}, _t("Setting up the RVM relay (a few minutes)"))
+        return {"FINISHED"}
+
+
+def _redraw_while_setup():
+    """準備の進み具合をパネルに出すため、動いている間は画面を描き直す"""
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            area.tag_redraw()
+    return 1.0 if matte_setup.running else None
 
 
 class TRKAR_OT_matte_stop(bpy.types.Operator):
@@ -2817,13 +2849,23 @@ def _draw_ndi_in(layout, context):
             sub.label(text=" / ".join(parts[3:]))
         else:
             sub.label(text=status or _t("Starting RVM…"), icon="TIME")
+    elif matte_setup.running:
+        sub.label(text=_t("Setting up the RVM relay…"), icon="TIME")
+        sub.label(text=matte_setup.status[:80])
     else:
-        row = sub.row(align=True)
-        row.operator("trkar.matte_start", icon="MOD_MASK")
-        row.prop(settings, "matte_model", text="")
-        sub.prop(settings, "receive_matte")
-        if matte_relay.last_error:
-            sub.label(text=matte_relay.last_error, icon="ERROR")
+        folder = _matte_folder(context)
+        if folder is not None and matte.python_for(folder) is None:
+            # 中継のフォルダはあるが、まだ準備していない (Releases の zip を広げただけ・リポジトリから取っただけ)
+            sub.operator("trkar.matte_setup", icon="IMPORT")
+            if matte_setup.last_error:
+                sub.label(text=matte_setup.last_error, icon="ERROR")
+        else:
+            row = sub.row(align=True)
+            row.operator("trkar.matte_start", icon="MOD_MASK")
+            row.prop(settings, "matte_model", text="")
+            sub.prop(settings, "receive_matte")
+            if matte_relay.last_error:
+                sub.label(text=matte_relay.last_error, icon="ERROR")
     _draw_edge_style(layout, settings)
 
 
@@ -3474,6 +3516,7 @@ classes = (
     TRKAR_PT_take_settings,
     TRKAR_PT_ndi_out,
     TRKAR_OT_matte_start,
+    TRKAR_OT_matte_setup,
     TRKAR_OT_matte_stop,
 )
 

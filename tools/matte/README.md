@@ -1,7 +1,7 @@
 # trkar_matte (RVM で人物を切り抜いて NDI で送り直す)
 
 > trkAR Camera (Blender アドオン) と組み合わせて使う、AI で人物を切り抜く中継です。ライセンスは GPL-3.0-or-later
-> (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) に RVM のモデルを同梱しています**
+> (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.1) に RVM のモデルを同梱しています**
 > (RVM ([Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)) も GPL-3.0。ライセンスと出どころは
 > zip の `THIRD_PARTY/`)。zip を広げて Python の準備をすれば、モデルを落とす手順は要りません。
 > リポジトリの `tools/matte` から使うときは、下の手順で配布元からモデルを落としてください (git にはモデルを入れていません)。
@@ -24,9 +24,18 @@ iPhone ─NDI "trkAR"─▶ trkar_matte.py (RVM) ─NDI "trkAR Matte" (RGBA)─�
 
 ### Releases の zip から使う (かんたん)
 
-1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
-2. 下の macOS か Windows / Linux の手順のうち、`uv venv` と `uv pip install` だけを `trkar_matte/` の中で流す (`models` を作ってモデルを落とす行は要らない)
-3. Blender の `RVM 中継のフォルダ` (`RVM Relay Folder`) に、広げた `trkar_matte/` を指定する
+1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.1) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
+2. Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の `RVM 中継のフォルダ` (`RVM Relay Folder`) に、広げた `trkar_matte/` を指定する
+3. `trkAR 受信` の実写の段に出る **`RVM の中継を準備`** (`Set Up RVM Relay`) を押す (最初の 1 回だけ。アドオン 0.11.10〜)。
+   この PC に Python 3.12 とライブラリ (Core ML か ONNX Runtime、100〜300MB ほど) を、それぞれの配布元から `.venv` に落とす。
+   数分かかり、終わると `RVM で切り抜く` が押せるようになる
+
+ターミナルで準備するときは、`trkar_matte/` で `bash setup.sh` (macOS / Linux) か
+`powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows)。中身は下の手順と同じ
+(uv が無ければ入れ、`.venv` を作ってライブラリを入れ、モデルが無ければ落とす)。
+Python とライブラリは trkAR からは配らず、使う PC で配布元から落とすので、それぞれのライセンスはそのまま。
+
+以下は手で準備するときの手順。
 
 ### macOS (Core ML)
 
@@ -143,16 +152,20 @@ keeps hair semi-transparent.
 
 **Setup from Releases (easiest)**
 
-1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) and unzip it anywhere. It contains `trkar_matte/` with the
+1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.1) and unzip it anywhere. It contains `trkar_matte/` with the
    RVM models in `models/` (RVM is GPL-3.0; its license and source are in `THIRD_PARTY/`)
-2. In `trkar_matte/`, create the Python environment with [uv](https://docs.astral.sh/uv/):
-   - macOS (Core ML): `uv venv -p 3.12 .venv` then `uv pip install -p .venv numpy coremltools pillow`
-   - Windows / Linux + NVIDIA: `uv venv -p 3.12 .venv` then `uv pip install -p .venv numpy onnxruntime-gpu pillow`
-   - Windows (DirectML, also non-NVIDIA GPUs): `... numpy onnxruntime-directml pillow`
-   - CPU only (testing): `... numpy onnxruntime pillow`
-3. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > RVM Relay Folder` to the unzipped `trkar_matte/`.
-   Then `Matte with RVM` in the live video section of `trkAR Receive` starts and stops the relay, and Blender's NDI
-   input switches to `trkAR Matte`. With `Start Matte on Receive` on, it starts with ▶ on `trkAR Receive`
+2. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > RVM Relay Folder` to the unzipped `trkar_matte/`
+3. Press **`Set Up RVM Relay`** in the live video section of `trkAR Receive` (once; add-on 0.11.10 or later). It
+   downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, about 100–300 MB) from their official sources
+   into `.venv`. It takes a few minutes; then `Matte with RVM` starts and stops the relay, and Blender's NDI input
+   switches to `trkAR Matte`. With `Start Matte on Receive` on, it starts with ▶ on `trkAR Receive`
+
+To set up from a terminal instead, run `bash setup.sh` (macOS / Linux) or
+`powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) in `trkar_matte/`. It installs
+[uv](https://docs.astral.sh/uv/) if needed, creates `.venv`, installs the libraries (macOS: `numpy coremltools pillow`;
+NVIDIA: `onnxruntime-gpu`; Windows without NVIDIA: `onnxruntime-directml`; Linux without NVIDIA: `onnxruntime`), and
+downloads the models if they are missing. Python and the libraries are not redistributed by trkAR: they are
+downloaded on your computer from their sources, under their own licenses.
 
 When you use `tools/matte` from a clone of this repository instead, download the models into `models/` as in the
 Japanese steps above (the `curl -LO …` lines); git does not contain them.

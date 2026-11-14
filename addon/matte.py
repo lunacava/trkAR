@@ -41,6 +41,61 @@ def python_for(folder):
     return None
 
 
+def setup_command(folder):
+    """中継の準備のコマンド (tools/matte の setup.sh / setup.ps1)。無ければ None"""
+    if sys.platform == "win32":
+        script = os.path.join(folder, "setup.ps1")
+        return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] if os.path.isfile(script) else None
+    script = os.path.join(folder, "setup.sh")
+    return ["/bin/bash", script] if os.path.isfile(script) else None
+
+
+class MatteSetup:
+    """中継の準備 (Python と ライブラリを .venv に入れる。数分、数百 MB を落とす) を子プロセスで流す"""
+
+    def __init__(self):
+        self._process = None
+        self._lines = deque(maxlen=20)
+        self.ok = False
+        self.last_error = ""
+
+    @property
+    def running(self):
+        return self._process is not None and self._process.poll() is None
+
+    @property
+    def status(self):
+        return self._lines[-1] if self._lines else ""
+
+    def start(self, folder):
+        if self.running:
+            return
+        command = setup_command(folder)
+        if command is None:
+            raise RuntimeError(_t("No setup script (setup.sh / setup.ps1) in %s") % folder)
+        self._lines.clear()
+        self.ok, self.last_error = False, ""
+        env = dict(os.environ)
+        extra = [os.path.expanduser("~/.local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+        env["PATH"] = os.pathsep.join([env.get("PATH", "")] + extra)
+        for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):  # Blender の Python を持ち込まない
+            env.pop(key, None)
+        self._process = subprocess.Popen(command, cwd=folder, env=env, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         text=True, encoding="utf-8", errors="replace")
+        threading.Thread(target=self._read, args=(self._process,), daemon=True).start()
+
+    def _read(self, process):
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                self._lines.append(line)
+        code = process.wait()
+        self.ok = code == 0 and self.status == "SETUP_OK"
+        if not self.ok:
+            self.last_error = (self.status or _t("The setup exited (%d)") % code)[:300]
+
+
 class MatteRelay:
     """trkar_matte.py を子プロセスで動かす。出力の最後の行を状態として見せる。"""
 
@@ -69,7 +124,7 @@ class MatteRelay:
         self.stop()
         python = python_for(folder)
         if python is None:
-            raise RuntimeError(_t("No .venv in %s (see the setup in tools/matte/README)") % folder)
+            raise RuntimeError(_t("The RVM relay is not set up yet. Press \"Set Up RVM Relay\" (%s)") % folder)
         self._lines.clear()
         self.last_error = ""
         self.source = source

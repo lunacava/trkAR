@@ -1,3 +1,4 @@
 tools/matte/.venv/
 tools/matte/models/
 tools/matte/__pycache__/
+dist/

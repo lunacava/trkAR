@@ -1,10 +1,12 @@
 # trkar_matte (RVM で人物を切り抜いて NDI で送り直す)
 
 > trkAR Camera (Blender アドオン) と組み合わせて使う、AI で人物を切り抜く中継です。ライセンスは GPL-3.0-or-later
-> (`LICENSE`、アドオンと同じ)。RVM ([Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)) のモデルは
-> このリポジトリには入れていません。下の手順で配布元から落としてください (RVM も GPL-3.0 です)。
-> English: an NDI relay that cuts out people with RVM and sends RGBA NDI for trkAR Camera. Set up below (macOS: Core ML,
-> Windows / Linux: ONNX Runtime with a GPU).
+> (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) に RVM のモデルを同梱しています**
+> (RVM ([Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)) も GPL-3.0。ライセンスと出どころは
+> zip の `THIRD_PARTY/`)。zip を広げて Python の準備をすれば、モデルを落とす手順は要りません。
+> リポジトリの `tools/matte` から使うときは、下の手順で配布元からモデルを落としてください (git にはモデルを入れていません)。
+> English: an NDI relay that cuts out people with RVM and sends RGBA NDI for trkAR Camera. The zip on Releases includes
+> the RVM models. See "English" at the end for setup.
 
 trkAR の実写 NDI を [Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting) (RVM) で切り抜き、
 アルファ付き (RGBA) の NDI `trkAR Matte` として送り直す中継プログラム。
@@ -19,6 +21,12 @@ iPhone ─NDI "trkAR"─▶ trkar_matte.py (RVM) ─NDI "trkAR Matte" (RGBA)─�
 - Blender アドオンの `ndi.py` (ctypes) を使うので NDI ランタイムが必要 (アドオンと同じ)
 - 推論エンジンは 2 通り。`--backend` を省略すると macOS は Core ML、それ以外 (Windows / Linux) は
   ONNX Runtime になる
+
+### Releases の zip から使う (かんたん)
+
+1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
+2. 下の macOS か Windows / Linux の手順のうち、`uv venv` と `uv pip install` だけを `trkar_matte/` の中で流す (`models` を作ってモデルを落とす行は要らない)
+3. Blender の `RVM 中継のフォルダ` (`RVM Relay Folder`) に、広げた `trkar_matte/` を指定する
 
 ### macOS (Core ML)
 
@@ -126,3 +134,32 @@ ONNX Runtime 版 RVM はリアルタイムに向かない** (2〜3fps 程度)。
   PC 側の GPU 性能に依存しない
 - CUDA を使う場合は `onnxruntime-gpu` + 対応する CUDA Toolkit / cuDNN の導入が別途必要
   (今回は未検証。GPU が新しい/VRAM が大きいマシンならこちらや fp16 モデルで改善する余地はある)
+
+## English
+
+An NDI relay that cuts people out of trkAR's live video with [Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)
+(RVM) and sends it again as an RGBA NDI source, `trkAR Matte`. It is finer than ARKit's person mask (256×192) and
+keeps hair semi-transparent.
+
+**Setup from Releases (easiest)**
+
+1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.0) and unzip it anywhere. It contains `trkar_matte/` with the
+   RVM models in `models/` (RVM is GPL-3.0; its license and source are in `THIRD_PARTY/`)
+2. In `trkar_matte/`, create the Python environment with [uv](https://docs.astral.sh/uv/):
+   - macOS (Core ML): `uv venv -p 3.12 .venv` then `uv pip install -p .venv numpy coremltools pillow`
+   - Windows / Linux + NVIDIA: `uv venv -p 3.12 .venv` then `uv pip install -p .venv numpy onnxruntime-gpu pillow`
+   - Windows (DirectML, also non-NVIDIA GPUs): `... numpy onnxruntime-directml pillow`
+   - CPU only (testing): `... numpy onnxruntime pillow`
+3. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > RVM Relay Folder` to the unzipped `trkar_matte/`.
+   Then `Matte with RVM` in the live video section of `trkAR Receive` starts and stops the relay, and Blender's NDI
+   input switches to `trkAR Matte`. With `Start Matte on Receive` on, it starts with ▶ on `trkAR Receive`
+
+When you use `tools/matte` from a clone of this repository instead, download the models into `models/` as in the
+Japanese steps above (the `curl -LO …` lines); git does not contain them.
+
+From a terminal: `.venv/bin/python trkar_matte.py --list` (NDI sources), `.venv/bin/python trkar_matte.py --source "IPHONE (trkAR)" --model 1080`
+(`.venv\Scripts\python.exe` on Windows). Options are in the table above (`--source`, `--name`, `--model 720|1080`,
+`--backend auto|coreml|onnx`, `--units`, `--onnx-provider auto|cuda|dml|cpu`, `--parent-pid`).
+
+Latency on a Mac mini M4 (1080p 30 fps, Core ML): about +48 ms over direct NDI, staying at 30 fps. On a weak GPU
+(for example an NVIDIA MX150 on Windows) ONNX Runtime takes 300 ms or more per frame, too slow for real time.

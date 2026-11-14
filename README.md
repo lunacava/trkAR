@@ -43,7 +43,7 @@ when you redistribute. Only the add-on is GPL (as Blender requires): if you dist
 | 対象 | ライセンス |
 | --- | --- |
 | `addon/` (Blender アドオン trkAR Camera) | GPL-3.0-or-later (`addon/LICENSE`) |
-| `tools/matte/` (AI の人物の切り抜きの中継) | GPL-3.0-or-later (`tools/matte/LICENSE`)。RVM のモデルは含まない (配布元から落とす) |
+| `tools/matte/` (AI の人物の切り抜きの中継) | GPL-3.0-or-later (`tools/matte/LICENSE`)。git には RVM のモデルを入れず、Releases の `trkar-matte-<版>.zip` に同梱 (RVM も GPL-3.0、zip の `THIRD_PARTY/`) |
 | `tools/screen_ndi/` (アドオンの `bin/trkar-screen-ndi` のソース) | GPL-3.0-or-later (`addon/LICENSE` と同じ) |
 | `examples/` (フックの見本) | Apache-2.0 (`examples/LICENSE`、配るときは `examples/NOTICE` も残す) |
 | 文書 (`INTEGRATION.md`・`CLAUDE.md`・サイトの文章) とサンプルのシーン | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — クレジット「© 2026 lunacava / trkAR」と出典の表示、変えたらそのことの明記 |

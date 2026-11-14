@@ -31,6 +31,7 @@ Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の�
 | コマンド | (空) | 流すコマンド。空なら何もしない |
 | 録画を止めたら | オン | `recorded` のときに流す |
 | 書き出したら | オン | `exported` のときに流す |
+| 生成用の素材のあと | オン | `for_generation` のときに流す (0.11.9〜) |
 | 打ち切り (分) | 30 | これを過ぎたら止める |
 
 ### いつ流れるか
@@ -39,6 +40,7 @@ Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の�
 | --- | --- | --- |
 | `recorded` | 録画 (REC) を止めたとき。iPhone の REC ボタンで止めたときも同じ | `take.json`・`actions.json`・`video/`・(あれば) `alpha/`・`depth/` |
 | `exported` | テイクの書き出しが最後まで終わったとき (途中で止めたときは流れない) | 上に加えて `render.mp4` か `render/`。`take.json` に `render` が足してある |
+| `for_generation` | 生成用の素材を書き出したとき (0.11.9〜) | `for_generation/` (6 章) |
 
 パネルの「コマンドを流す」で、選んでいるテイクにもう一度流せます (書き出してあれば `exported`、なければ `recorded`)。
 
@@ -50,9 +52,10 @@ Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の�
   | プレースホルダー | 置き換わるもの |
   | --- | --- |
   | `{take_dir}` | テイクのフォルダの絶対パス |
-  | `{event}` | `recorded` か `exported` |
+  | `{event}` | `recorded`・`exported`・`for_generation` |
   | `{render}` | `render.mp4` のパス。PNG 連番なら `render/` のパス。なければ空文字 |
   | `{take_json}` | `take.json` のパス |
+  | `{for_generation}` | `for_generation/` のパス (6 章)。なければ空文字 |
 
 - `~` は自分のホームフォルダに展開します
 - 例: `python3 ~/trkar_upload.py {take_dir} {event}`
@@ -64,10 +67,11 @@ Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の�
 | 環境変数 | 内容 |
 | --- | --- |
 | `TRKAR_HOOK_VERSION` | この仕様の版 (`1`) |
-| `TRKAR_EVENT` | `recorded` / `exported` |
+| `TRKAR_EVENT` | `recorded` / `exported` / `for_generation` |
 | `TRKAR_TAKE_DIR` | テイクのフォルダ |
 | `TRKAR_TAKE_JSON` | `take.json` のパス |
 | `TRKAR_RENDER` | `render.mp4` か `render/` のパス。なければ空 |
+| `TRKAR_FOR_GENERATION` | `for_generation/` のパス。なければ空 |
 | `TRKAR_BLEND` | 開いている .blend のパス (保存していなければ空) |
 | `TRKAR_ADDON_VERSION` | アドオンの版 (例 `0.9.11`) |
 
@@ -276,9 +280,59 @@ iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の 
 - 形式を変えたら、この表に行を足し、アプリとアドオンの最低の組み合わせをここに書く
 - どの版で録ったかは、テイクの `take.json` の `device.app` (アプリの版) と `environment.addon` (アドオンの版) に残る
 
+## 6. 生成用の素材 (for_generation/)
+
+アドオンの `Export Generation Inputs` (日本語の画面では「生成用の素材を書き出す」) は、参照を入れられる動画生成モデルに
+渡す一式を `<テイク>/for_generation/` に書きます (書き直すと前のものは `for_generation_<日時>/` に残ります)。
+自分のクラウドや動画生成のサービスに送る連携は、このフォルダをまとめて渡す前提で作ってください。
+フックなら `for_generation` のイベントで `{for_generation}` にこのフォルダが入ります。
+
+| ファイル | 中身 | モデルへの渡し方 (manifest の `input`) |
+| --- | --- | --- |
+| `reference.mp4` | テイクのカメラの動きで、セットを灰色 1 色の粘土で描いた動画。人は実写から取った白い輪郭で、中は黒 | 参照動画 (`reference_video`)。プロンプトの `<Video 1>` |
+| `layout.png` | 人の立ち位置から前・右・後ろ・左を見た 2×2 の絵 (ロケーション) | 参照画像 (`reference_image`)。`<Picture 1>` |
+| `actor.jpg` | 人が大きく写り、ピントと明るさの良いコマ (人の外は灰色) | 参照画像 (`reference_image`)。`<Picture 2>` |
+| `first_frame.png` | 範囲の最初のコマ | 最初のコマ (`first_frame_image`) |
+| `camera.json` | コマごとのカメラの位置・回転・画角 (Blender のワールド、Z 上、メートル) | カメラの道筋 (`camera_path`) |
+| `prompt.txt` | 上のファイルを指すプロンプトのひな形 (英語)。最後の行の `[Write the shot here: …]` を書き換えて使う | 文 (`text`) |
+| `manifest.json` | 下の形の一覧 | スクリプトから読む |
+
+`manifest.json` の形 (`version` は今 `1`。項目を足すことはありますが、今ある項目の意味は変えません):
+
+```json
+{
+  "version": 1,
+  "made_by": "trkAR Camera",
+  "take": "take_20261106_173030",
+  "frame_start": 260, "frame_end": 499, "fps": 24.0, "seconds": 10.0,
+  "time_offset": 0,
+  "blend": "subway_platform_v4_20s",
+  "model": "Any video generation model that accepts a reference video and reference images ...",
+  "files": {
+    "reference.mp4": {"role": "...", "input": "reference_video", "width": 960, "height": 544, "frames": 240},
+    "layout.png": {"role": "...", "input": "reference_image"},
+    "actor.jpg": {"role": "...", "input": "reference_image"},
+    "first_frame.png": {"role": "...", "input": "first_frame_image"},
+    "camera.json": {"role": "...", "input": "camera_path"},
+    "prompt.txt": {"role": "...", "input": "text"}
+  },
+  "seconds_to_make": 42.0
+}
+```
+
+- `frame_start` / `frame_end` は背景の CG の時間です。テイクのコマ番号は、これから `time_offset` を引いたもの
+- `files` に無いファイルは書かれていません (例: 人のマスクが無いテイクの `actor.jpg`、レイアウトを切ったときの `layout.png`)
+- パスはどれもこのフォルダからの相対です。フォルダごと別の場所 (S3 など) に置いても、そのまま使えます
+- モデルによって参照の呼び方 (`<Video 1>`、`Video 1`、`@video1`、`[ref1]` など) と数が違います。送る側で `prompt.txt` を書き換えてください
+- `actor.jpg` と `reference.mp4` には撮った人の姿が入っています。外のサービスに送る前に、写っている人の同意を取ってください。
+  実在の人の顔を断るサービスもあります
+
+---
+
 ## 見本
 
 - [`examples/s3_upload.py`](examples/s3_upload.py): テイクを Amazon S3 に上げるフック (aws CLI を使う)
+- [`examples/fal_h3_generate.py`](examples/fal_h3_generate.py): `for_generation/` を fal.ai の MiniMax H3 に送って、結果の動画を落とす (フックの `for_generation` でも、手でも。料金は自分の fal.ai のアカウント)
 
 自分の連携を作るときは、見本をコピーして、上げ先と認証の部分を書き換えるのが近道です。
 

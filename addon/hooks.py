@@ -6,10 +6,11 @@ trkAR 自身はクラウドに送らない。S3・Google Drive・社内の NAS �
 - イベント
     recorded  録画を止めたとき (take.json・actions.json・video/ などが揃ったあと)
     exported  書き出しが終わったとき (render.mp4 か render/ ができたあと。take.json に render が足してある)
-- コマンドは 1 行の文字列。{take_dir} {event} {render} {take_json} を置き換えてから shlex で分けて実行する
+    for_generation  生成用の素材を書き出したとき (<テイク>/for_generation/ ができたあと。0.11.9〜)
+- コマンドは 1 行の文字列。{take_dir} {event} {render} {take_json} {for_generation} を置き換えてから shlex で分けて実行する
   (シェルは通さない。パイプやリダイレクトを使うならスクリプトに書く)。作業フォルダはテイクのフォルダ
 - 環境変数 TRKAR_HOOK_VERSION / TRKAR_EVENT / TRKAR_TAKE_DIR / TRKAR_TAKE_JSON / TRKAR_RENDER /
-  TRKAR_BLEND / TRKAR_ADDON_VERSION を足して渡す
+  TRKAR_FOR_GENERATION / TRKAR_BLEND / TRKAR_ADDON_VERSION を足して渡す
 - 標準出力・標準エラーは <テイク>/hook.log に追記。結果は <テイク>/hook.json に残す
   ({"event", "exit_code", "started_utc", "finished_utc", "seconds", "message", "url"})
 - 終了コード 0 が成功。標準出力の最後の行が JSON のオブジェクトなら、その message / url をパネルに出す
@@ -36,7 +37,7 @@ except ImportError:  # アドオンの外から単独で読まれたとき (rend
 HOOK_VERSION = 1
 STATE_FILE = "hook.json"
 LOG_FILE = "hook.log"
-EVENTS = ("recorded", "exported")
+EVENTS = ("recorded", "exported", "for_generation")
 # Finder / Dock から起動した Blender は PATH が短い (python3 や aws を探せるように足す)
 _EXTRA_PATH = ("/opt/homebrew/bin", "/usr/local/bin", os.path.expanduser("~/.local/bin"))
 
@@ -60,13 +61,19 @@ def _render_path(path):
     return frames if os.path.isdir(frames) else ""
 
 
+def _for_generation_path(path):
+    """生成用の素材のフォルダ (いちばん新しいもの、prep.py の for_generation/)。無ければ空"""
+    folder = os.path.join(path, "for_generation")
+    return folder if os.path.isdir(folder) else ""
+
+
 def build_command(template, path, event):
     """コマンドの文字列を、置き換えてから引数の並びにする。空なら None"""
     template = (template or "").strip()
     if not template:
         return None
     values = {"take_dir": path, "event": event, "render": _render_path(path),
-              "take_json": os.path.join(path, "take.json")}
+              "take_json": os.path.join(path, "take.json"), "for_generation": _for_generation_path(path)}
     args = shlex.split(template, posix=sys.platform != "win32")
     return [os.path.expanduser(arg.format(**values)) for arg in args]
 
@@ -81,6 +88,7 @@ def _child_env(path, event, addon_version):
         "TRKAR_TAKE_DIR": path,
         "TRKAR_TAKE_JSON": os.path.join(path, "take.json"),
         "TRKAR_RENDER": _render_path(path),
+        "TRKAR_FOR_GENERATION": _for_generation_path(path),
         "TRKAR_BLEND": bpy.data.filepath,
         "TRKAR_ADDON_VERSION": addon_version or "",
         "PYTHONUNBUFFERED": "1",
@@ -112,7 +120,8 @@ def busy(path=None):
 
 
 def label(st):
-    event = {"recorded": _t("recording"), "exported": _t("export")}.get(st.get("event"), st.get("event", ""))
+    event = {"recorded": _t("recording"), "exported": _t("export"),
+             "for_generation": _t("generation inputs")}.get(st.get("event"), st.get("event", ""))
     if st["state"] == "queued":
         return _t("Hook: queued (%s)") % event, "TIME"
     if st["state"] == "running":

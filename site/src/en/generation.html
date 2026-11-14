@@ -26,6 +26,27 @@
 </table>
 <p>Models name references differently (<span class="mono">&lt;Video 1&gt;</span>, <span class="mono">@video1</span>, <span class="mono">[ref1]</span> and so on) and accept different numbers of references. Rewrite how the prompt points to them to match the model's documentation. If the model takes only one reference image, use <span class="mono">actor.jpg</span>.</p>
 
+<h3>How to give them to each model</h3>
+<p>Give the same files to each model as below. Models differ in how they name references, how many they take and how long a video can be, so rewrite <span class="mono">&lt;Video 1&gt;</span> / <span class="mono">&lt;Picture N&gt;</span> in <span class="mono">prompt.txt</span> to the model's style. Follow each service's pricing and terms of use (as of November 2026).</p>
+<table>
+  <tr><th>Model (provider)</th><th>How to pass the files</th><th>Names in the prompt</th><th>Length</th></tr>
+  <tr><td>MiniMax H3 reference-to-video (fal.ai)</td><td><span class="mono">reference.mp4</span> as the reference video, <span class="mono">layout.png</span> and <span class="mono">actor.jpg</span> as reference images (in the API, <span class="mono">reference_video_urls</span> and <span class="mono">reference_image_urls</span>; upload the files to fal.ai first to get URLs)</td><td><span class="mono">Video 1</span>, <span class="mono">Image 1</span>, <span class="mono">Image 2</span></td><td>5–15 s</td></tr>
+  <tr><td>MiniMax H3 (MiniMax API)</td><td>In <span class="mono">/v2/video_generation</span>, list the text, the reference images (<span class="mono">role: reference_image</span>) and the reference video (<span class="mono">role: reference_video</span>) in <span class="mono">content</span>. Files are embedded as data URLs, up to 64 MB in total</td><td><span class="mono">Video 1</span>, <span class="mono">Image 1</span>, <span class="mono">Image 2</span></td><td>5–15 s</td></tr>
+  <tr><td>Models that remake a base video (such as Kling's video edit)</td><td><span class="mono">reference.mp4</span> as the base video, <span class="mono">actor.jpg</span> and <span class="mono">layout.png</span> as reference images. The base video may have size rules (Kling needs a height of 700 px or more and square pixels; export with a larger long side)</td><td>As the model's documentation says</td><td>Depends on the model (often up to 10 s)</td></tr>
+  <tr><td>Models that start from a first frame (image-to-video)</td><td><span class="mono">first_frame.png</span> as the first frame. Describe the motion in the prompt (the camera move is hard to reproduce)</td><td>–</td><td>Depends on the model</td></tr>
+</table>
+<p>Some models refuse images with faces of real people. In that case leave out <span class="mono">actor.jpg</span> and describe the person in the prompt.</p>
+
+<h3>Sending them automatically (example)</h3>
+<p>To go straight on to generation after exporting, turn on <span class="mono">After Generation Inputs</span> in the add-on's after-take command settings (0.11.9 or later) and use the example <a href="https://github.com/lunacava/trkAR/blob/main/examples/fal_h3_generate.py">examples/fal_h3_generate.py</a>. It sends <span class="mono">for_generation/</span> to MiniMax H3 on fal.ai and downloads the video to <span class="mono">for_generation/results/&lt;time&gt;/h3.mp4</span>.</p>
+<p><span class="mono">python3 ~/trkar/fal_h3_generate.py {for_generation} --event {event} --allow-external</span></p>
+<ul>
+  <li>It is charged to your own fal.ai account. Pass the key in the environment variable <span class="mono">FAL_KEY</span> (do not write it in the command or a file)</li>
+  <li>Add <span class="mono">--allow-external</span> once you have the consent of the people in the take. Without it nothing is sent</li>
+  <li>Describe the shot by editing the last line of <span class="mono">prompt.txt</span>, or pass <span class="mono">--shot "…"</span></li>
+  <li>To send to another service or your own cloud, change where this example sends. The format of the files is in <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.en.md#6-generation-inputs-for_generation">section 6 of INTEGRATION.en.md</a></li>
+</ul>
+
 <h3>Tips</h3>
 <ul>
   <li><b>The person outline needs a person mask</b>. When recording, use the iPhone's <span class="mono">MASK</span> (alpha on the video) or <span class="mono">DPT</span> (person mask), or the AI cut-out on the PC (<span class="mono">Matte with RVM</span>; see "Cutting out people" in <a href="start.html">Getting started</a>). RVM gives a finer outline. Without a mask, the reference video shows only the clay set</li>

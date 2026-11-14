@@ -48,6 +48,27 @@
 </table>
 <p>モデルによって参照の名前 (<span class="mono">&lt;Video 1&gt;</span>、<span class="mono">@video1</span>、<span class="mono">[ref1]</span> など) や、受けられる参照の数が違います。プロンプトの指し方はモデルの説明に合わせて書き換えてください。参照の画像が 1 枚しか入らないモデルなら、<span class="mono">actor.jpg</span> を優先します。</p>
 
+<h3>モデルごとの渡し方</h3>
+<p>同じ素材を、モデルごとに次のように渡します。参照の呼び方と数、長さの上限はモデルで違うので、<span class="mono">prompt.txt</span> の <span class="mono">&lt;Video 1&gt;</span>・<span class="mono">&lt;Picture N&gt;</span> をそのモデルの書き方に直します。値段と利用規約は各サービスのものに従ってください (2026 年 11 月時点の内容です)。</p>
+<table>
+  <tr><th>モデル (提供元)</th><th>素材の渡し方</th><th>プロンプトの呼び方</th><th>長さ</th></tr>
+  <tr><td>MiniMax H3 reference-to-video (fal.ai)</td><td><span class="mono">reference.mp4</span> を参照動画、<span class="mono">layout.png</span>・<span class="mono">actor.jpg</span> を参照画像 (API では <span class="mono">reference_video_urls</span>・<span class="mono">reference_image_urls</span>。ファイルは先に fal.ai に上げて URL にする)</td><td><span class="mono">Video 1</span>・<span class="mono">Image 1</span>・<span class="mono">Image 2</span></td><td>5〜15 秒</td></tr>
+  <tr><td>MiniMax H3 (MiniMax の API)</td><td><span class="mono">/v2/video_generation</span> の <span class="mono">content</span> に、文・参照画像 (<span class="mono">role: reference_image</span>)・参照動画 (<span class="mono">role: reference_video</span>) を並べる。ファイルは data URL で埋め込み、全体で 64MB まで</td><td><span class="mono">Video 1</span>・<span class="mono">Image 1</span>・<span class="mono">Image 2</span></td><td>5〜15 秒</td></tr>
+  <tr><td>動画を土台に作り替えるモデル (Kling の video edit など)</td><td><span class="mono">reference.mp4</span> を土台の動画、<span class="mono">actor.jpg</span> や <span class="mono">layout.png</span> を参照画像に。土台の動画の高さや画素の比に決まりがあることがある (Kling は高さ 700px 以上・1:1。書き出すときの長辺を大きくする)</td><td>各モデルの説明に合わせる</td><td>モデルによる (10 秒までが多い)</td></tr>
+  <tr><td>最初のコマから作るモデル (image-to-video)</td><td><span class="mono">first_frame.png</span> を最初のコマに。動きはプロンプトで書く (カメラの動きは再現されにくい)</td><td>―</td><td>モデルによる</td></tr>
+</table>
+<p>実在の人の顔を含む画像を断るモデルもあります。その場合は <span class="mono">actor.jpg</span> を渡さず、人の見た目をプロンプトで書きます。</p>
+
+<h3>自動で送る (見本)</h3>
+<p>書き出したら自動で生成まで流したいときは、アドオンの「テイクのあとに流すコマンド」で <span class="mono">生成用の素材のあと</span> をオンにし (0.11.9 以降)、見本 <a href="https://github.com/lunacava/trkAR/blob/main/examples/fal_h3_generate.py">examples/fal_h3_generate.py</a> を指定します。<span class="mono">for_generation/</span> を fal.ai の MiniMax H3 に送り、できた動画を <span class="mono">for_generation/results/&lt;日時&gt;/h3.mp4</span> に落とします。</p>
+<p><span class="mono">python3 ~/trkar/fal_h3_generate.py {for_generation} --event {event} --allow-external</span></p>
+<ul>
+  <li>料金は自分の fal.ai のアカウントにかかります。鍵は環境変数 <span class="mono">FAL_KEY</span> で渡します (コマンドやファイルに書かない)</li>
+  <li>写っている人の同意を取ったうえで <span class="mono">--allow-external</span> を付けます。付けないと何も送りません</li>
+  <li>場面の説明は <span class="mono">prompt.txt</span> の最後の行を書き換えるか、<span class="mono">--shot "…"</span> で渡します</li>
+  <li>ほかのサービスや自分のクラウドに送るときは、この見本の送り先を書き換えます。素材の決まりは <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md#6-生成用の素材-for_generation">INTEGRATION.md の 6 章</a> にあります</li>
+</ul>
+
 <h3>うまく作るこつ</h3>
 <ul>
   <li><b>人の輪郭線には人物のマスクが要ります</b>。録るときに iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク)、または PC の AI の切り抜き (<span class="mono">RVM で切り抜く</span>、<a href="start.html">はじめかた</a> の「人の切り抜き」) を使ってください。RVM のほうが人の外形が細かく出ます。マスクの無いテイクでは、背景の粘土だけの参照の動画になります</li>

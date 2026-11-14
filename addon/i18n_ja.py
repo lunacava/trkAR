@@ -589,6 +589,9 @@ JA_PUBLIC = {
     "trkAR: migrated data from before the rename (ARtrk) (names %d, scene settings %d)": "trkAR: 名前を変える前 (ARtrk) のデータを引き継ぎました (名前 %d、シーンの設定 %d)",
     "trkAR: playback had not started on REC, so it was restarted": "trkAR: REC で再生が始まっていなかったので始め直しました",
     "trkar_matte.py not found. Set \"RVM Relay Folder\" in the add-on preferences to tools/matte": "trkar_matte.py が見つかりません。アドオン設定の「RVM 中継のフォルダ」に tools/matte を指定",
+    "After Generation Inputs": "生成用の素材のあと",
+    "Run the command after Export Generation Inputs writes for_generation/ (event = for_generation). Use it to send the inputs to a video generation service or your own cloud": "生成用の素材を書き出して for_generation/ ができたら、コマンドを流す (event = for_generation)。素材を動画生成のサービスや自分のクラウドに送るときに使う",
+    "generation inputs": "生成用の素材",
 }
 JA_STUDIO = {}
 JA = dict(JA_PUBLIC, **JA_STUDIO)

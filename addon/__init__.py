@@ -207,6 +207,10 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
                                  description="Run the command when recording stops (event = recorded)")
     hook_on_export: BoolProperty(name="After Export", default=True,
                                  description="Run the command when an export finishes (event = exported)")
+    hook_on_for_generation: BoolProperty(
+        name="After Generation Inputs", default=True,
+        description="Run the command after Export Generation Inputs writes for_generation/ (event = for_generation). "
+                    "Use it to send the inputs to a video generation service or your own cloud")
     hook_timeout: IntProperty(name="Timeout (min)", default=30, min=1, max=24 * 60,
                               description="Stop the command if it does not finish within this time")
 
@@ -2176,7 +2180,8 @@ def _run_hook(path, event):
     """設定のコマンドを裏で流す (空なら何もしない)。失敗しても録画・書き出しの後始末は止めない"""
     try:
         prefs = _prefs(bpy.context)
-        wanted = prefs.hook_on_record if event == "recorded" else prefs.hook_on_export
+        wanted = {"recorded": prefs.hook_on_record, "exported": prefs.hook_on_export,
+                  "for_generation": prefs.hook_on_for_generation}.get(event, False)
         if wanted:
             hooks.run(path, event, prefs.hook_command, ADDON_VERSION or "", prefs.hook_timeout)
     except Exception as exc:
@@ -2188,6 +2193,7 @@ def _draw_hook_settings(layout, prefs):
     row = layout.row(align=True)
     row.prop(prefs, "hook_on_record")
     row.prop(prefs, "hook_on_export")
+    row.prop(prefs, "hook_on_for_generation")
     layout.prop(prefs, "hook_timeout")
 
 
@@ -2457,6 +2463,7 @@ class TRKAR_OT_take_prepare(bpy.types.Operator):
         finally:
             wm.progress_end()
         ref = manifest["files"]["reference.mp4"]
+        _run_hook(player.path, "for_generation")
         self.report({"INFO"}, _t("Exported to %s/ (%d×%d, %d frames, %.0f s)") % (
             prep.FOLDER, ref["width"], ref["height"], ref["frames"], manifest["seconds_to_make"]))
         return {"FINISHED"}

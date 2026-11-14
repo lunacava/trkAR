@@ -7,7 +7,7 @@ AR camera tracking for virtual production — iPhone / iPad app and Blender add-
 
 - Website: https://lunacava.github.io/trkAR/
 - Blender add-on (trkAR Camera): [Releases](https://github.com/lunacava/trkAR/releases) / source in [`addon/`](addon/)
-- Integration spec (hooks, take folder, automation port, OSC / NDI / UDP): [`INTEGRATION.md`](INTEGRATION.md)
+- Integration spec (hooks, take folder, automation port, generation inputs, OSC / NDI / UDP): [`INTEGRATION.en.md`](INTEGRATION.en.md) (English) / [`INTEGRATION.md`](INTEGRATION.md) (Japanese, authoritative)
 - Using Claude or another coding agent to connect trkAR to your cloud: see [`CLAUDE.md`](CLAUDE.md)
 
 ## Files

@@ -1,6 +1,6 @@
-# trkar_matte — AI マスク (RVM)
+# trkar_matte — AI Mask (RVM)
 
-> trkAR Camera (Blender アドオン) の **AI マスク (RVM)** です。実写の人に AI でマスクをかけ、人だけを残します。ライセンスは GPL-3.0-or-later
+> trkAR Camera (Blender アドオン) の **AI Mask (RVM)** です。実写の中の人を AI で見分け、人だけを残します。ライセンスは GPL-3.0-or-later
 > (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) に RVM のモデルを同梱しています**
 > (RVM ([Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)) も GPL-3.0。ライセンスと出どころは
 > zip の `THIRD_PARTY/`)。zip を広げて Python の準備をすれば、モデルを落とす手順は要りません。
@@ -9,7 +9,7 @@
 > the RVM models. See "English" at the end for setup.
 
 trkAR の実写 NDI を [Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting) (RVM) で切り抜き、
-アルファ付き (RGBA) の NDI `trkAR Matte` として送り直すプログラム (アドオンの画面では「AI マスク (RVM)」)。
+アルファ付き (RGBA) の NDI `trkAR Matte` として送り直すプログラム (アドオンの画面では「AI Mask (RVM)」)。
 ARKit の人物マスク (256×192) より細かく、髪の毛まで半透明で抜ける。
 
 ```
@@ -25,10 +25,10 @@ iPhone ─NDI "trkAR"─▶ trkar_matte.py (RVM) ─NDI "trkAR Matte" (RGBA)─�
 ### Releases の zip から使う (かんたん)
 
 1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
-2. Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の `AI マスク (RVM) のフォルダ` (`AI Mask (RVM) Folder`) に、広げた `trkar_matte/` を指定する
-3. `trkAR 受信` の実写の段に出る **`AI マスク (RVM) を準備`** (`Set Up AI Mask (RVM)`) を押す (最初の 1 回だけ。アドオン 0.11.10〜)。
+2. Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の `AI Mask フォルダ` (`AI Mask Folder`) に、広げた `trkar_matte/` を指定する
+3. `trkAR 受信` の実写の段に出る **`AI Mask Setup`** (`Set Up AI Mask`) を押す (最初の 1 回だけ。アドオン 0.11.10〜)。
    この PC に Python 3.12 とライブラリ (Core ML か ONNX Runtime、100〜300MB ほど) を、それぞれの配布元から `.venv` に落とす。
-   数分かかり、終わると `AI マスク (RVM) をかける` が押せるようになる
+   数分かかり、終わると `AI Mask 適用` が押せるようになる
 
 ターミナルで準備するときは、`trkar_matte/` で `bash setup.sh` (macOS / Linux) か
 `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows)。中身は下の手順と同じ
@@ -75,10 +75,10 @@ ONNX 版は Core ML 版と違って解像度固定のモデルが 2 つあるわ
 
 ## 使い方
 
-Blender のアドオン trkAR Camera からは、`trkAR 受信` の実写 (NDI) の段にある `AI マスク (RVM) をかける` ボタンで
+Blender のアドオン trkAR Camera からは、`trkAR 受信` の実写 (NDI) の段にある `AI Mask 適用` ボタンで
 起動・停止できる (Blender の NDI 受信も自動で `trkAR Matte` に切り替わる。公開版は 0.10.22 から)。
 このフォルダが見つからないときは、Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の
-`AI マスク (RVM) のフォルダ` にこのフォルダを指定する。`受信開始で AI マスクもかける` を入れると、`trkAR 受信` の ▶ で
+`AI Mask フォルダ` にこのフォルダを指定する。`受信開始で AI Mask ON` を入れると、`trkAR 受信` の ▶ で
 切り抜きも一緒に始まる。ターミナルから動かすときは:
 
 ```sh
@@ -154,11 +154,11 @@ keeps hair semi-transparent.
 
 1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) and unzip it anywhere. It contains `trkar_matte/` with the
    RVM models in `models/` (RVM is GPL-3.0; its license and source are in `THIRD_PARTY/`)
-2. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > AI Mask (RVM) Folder` to the unzipped `trkar_matte/`
-3. Press **`Set Up AI Mask (RVM)`** in the live video section of `trkAR Receive` (once; add-on 0.11.10 or later). It
+2. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > AI Mask Folder` to the unzipped `trkar_matte/`
+3. Press **`Set Up AI Mask`** in the live video section of `trkAR Receive` (once; add-on 0.11.10 or later). It
    downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, about 100–300 MB) from their official sources
-   into `.venv`. It takes a few minutes; then `Use AI Mask (RVM)` starts it and `Stop AI Mask` stops it, and Blender's NDI input
-   switches to `trkAR Matte`. With `Start AI Mask on Receive` on, it starts with ▶ on `trkAR Receive`
+   into `.venv`. It takes a few minutes; then `Apply AI Mask` starts it and `Stop AI Mask` stops it, and Blender's NDI input
+   switches to `trkAR Matte`. With `AI Mask On at Receive Start` on, it starts with ▶ on `trkAR Receive`
 
 To set up from a terminal instead, run `bash setup.sh` (macOS / Linux) or
 `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) in `trkar_matte/`. It installs

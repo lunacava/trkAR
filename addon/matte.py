@@ -124,7 +124,7 @@ class MatteRelay:
         self.stop()
         python = python_for(folder)
         if python is None:
-            raise RuntimeError(_t("AI Mask (RVM) is not set up yet. Press \"Set Up AI Mask (RVM)\" (%s)") % folder)
+            raise RuntimeError(_t("AI Mask is not set up yet. Press \"Set Up AI Mask\" (%s)") % folder)
         self._lines.clear()
         self.last_error = ""
         self.source = source

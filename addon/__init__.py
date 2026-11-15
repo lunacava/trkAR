@@ -177,7 +177,7 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
         update=lambda self, _context: _sync_sidebar(self.show_sidebar))
 
     matte_folder: StringProperty(
-        name="AI Mask (RVM) Folder",
+        name="AI Mask Folder",
         description="AI Mask (RVM): the folder with trkar_matte.py (the unzipped trkar-matte zip from Releases, or tools/matte). Empty = search near the add-on",
         subtype="DIR_PATH",
     )
@@ -373,7 +373,7 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
     )
     # 公開版は中継を入れていない人が多いので既定はオフ (入れていないと受信のたびに警告が出る)
     receive_matte: BoolProperty(
-        name="Start AI Mask on Receive", default=STUDIO,
+        name="AI Mask On at Receive Start", default=STUDIO,
         description="When receiving video with ▶ in trkAR Receive, also start the RVM matte and receive the matted video (trkAR Matte)")
     ndi_in_low: BoolProperty(name="Receive Low Resolution", default=False,
                              description="Receive the NDI preview stream (lighter, but lower resolution)")
@@ -900,7 +900,7 @@ def _resolve_video_source(operator, context):
         cameras = [n for n in visible if n.endswith(("(trkAR)", "(ARtrk)"))]
         fallback = cameras[0] if len(cameras) == 1 else ""
     if not fallback:
-        operator.report({"ERROR"}, _t("The AI-masked video %s is selected, but AI Mask is not running. Select the original iPhone source, or press \"Use AI Mask (RVM)\"") % source)
+        operator.report({"ERROR"}, _t("The AI-masked video %s is selected, but AI Mask is not running. Select the original iPhone source, or press \"Apply AI Mask\"") % source)
         return None
     settings.ndi_in_source = fallback
     operator.report({"INFO"}, _t("AI Mask is not running, so receiving the original source %s") % fallback)
@@ -1007,7 +1007,7 @@ def _switch_to_matte():
 
 class TRKAR_OT_matte_start(bpy.types.Operator):
     bl_idname = "trkar.matte_start"
-    bl_label = "Use AI Mask (RVM)"
+    bl_label = "Apply AI Mask"
     bl_description = ("Matte the selected NDI source with RVM (Robust Video Matting, AI person matting) on this PC, then switch to receiving \"%s\" with alpha (latency about +50ms)") % getattr(matte, "OUTPUT_NAME", "")
 
     def execute(self, context):
@@ -1035,7 +1035,7 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
             return {"FINISHED"}
         folder = _matte_folder(context)
         if folder is None:
-            self.report({"ERROR"}, _t("AI Mask (RVM) not found. Set \"AI Mask (RVM) Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
+            self.report({"ERROR"}, _t("AI Mask not found. Set \"AI Mask Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
             return {"CANCELLED"}
         matte_relay.previous_source = source
         matte_relay.previous_running = ndi_in.running
@@ -1054,7 +1054,7 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
 
 class TRKAR_OT_matte_setup(bpy.types.Operator):
     bl_idname = "trkar.matte_setup"
-    bl_label = "Set Up AI Mask (RVM)"
+    bl_label = "Set Up AI Mask"
     bl_description = ("Prepare AI Mask (RVM) on this PC: downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, "
                       "about 100–300 MB) from their official sources into the AI Mask folder's .venv. Takes a few minutes. "
                       "Needed once")
@@ -1062,7 +1062,7 @@ class TRKAR_OT_matte_setup(bpy.types.Operator):
     def execute(self, context):
         folder = _matte_folder(context)
         if folder is None:
-            self.report({"ERROR"}, _t("AI Mask (RVM) not found. Set \"AI Mask (RVM) Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
+            self.report({"ERROR"}, _t("AI Mask not found. Set \"AI Mask Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
             return {"CANCELLED"}
         try:
             matte_setup.start(folder)

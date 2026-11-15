@@ -155,14 +155,14 @@
 <h3>人のマスク (2 通り)</h3>
 <p>実写の人だけを CG の中に立たせるには、人の形のマスク (アルファ) が要ります。作り方は 2 通りあり、どちらでも同じように使えます。</p>
 <table class="compare">
-  <tr><th></th><th>iPhone の人物マスク</th><th>AI マスク (RVM、PC で動かす)</th></tr>
-  <tr><td>使い方</td><td>iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク)</td><td>Blender の <span class="mono">trkAR 受信</span> の実写の段の <span class="mono">AI マスク (RVM) をかける</span></td></tr>
+  <tr><th></th><th>iPhone の人物マスク</th><th>AI Mask (RVM、PC で動かす)</th></tr>
+  <tr><td>使い方</td><td>iPhone の <span class="mono">MASK</span> (実写のアルファ) か <span class="mono">DPT</span> (人物マスク)</td><td>Blender の <span class="mono">trkAR 受信</span> の実写の段の <span class="mono">AI Mask 適用</span></td></tr>
   <tr><td>細かさ</td><td>粗め (ARKit の人物マスク、256×192 ほど)</td><td>細かい。髪の毛まで半透明に抜ける</td></tr>
-  <tr><td>準備</td><td>要らない</td><td><a href="https://github.com/lunacava/trkAR/releases/tag/matte-v1.2">Releases の trkar-matte の zip</a> (RVM のモデル入り) を広げ、アドオンの <span class="mono">AI マスク (RVM) を準備</span> を 1 回押す</td></tr>
+  <tr><td>準備</td><td>要らない</td><td><a href="https://github.com/lunacava/trkAR/releases/tag/matte-v1.2">Releases の trkar-matte の zip</a> (RVM のモデル入り) を広げ、アドオンの <span class="mono">AI Mask Setup</span> を 1 回押す</td></tr>
   <tr><td>PC</td><td>何でもよい</td><td>Mac は Apple シリコン (Core ML)、Windows / Linux は GPU (NVIDIA の CUDA か DirectML)。GPU が弱いと遅く、リアルタイムに向きません</td></tr>
   <tr><td>遅れ</td><td>ほぼ無し</td><td>約 +50ms (Mac mini M4 で 30fps のまま)</td></tr>
 </table>
-<p>AI マスク (RVM)は、<a href="https://github.com/lunacava/trkAR/releases/tag/matte-v1.2">Releases</a> から <span class="mono">trkar-matte-&lt;版&gt;.zip</span> (RVM のモデル入り) を落として広げ、Blender の <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; trkAR Camera</span> の <span class="mono">AI マスク (RVM) のフォルダ</span> に、広げた <span class="mono">trkar_matte</span> を指定します。<span class="mono">trkAR 受信</span> の実写の段に出る <span class="mono">AI マスク (RVM) を準備</span> を押すと、Python とライブラリ (100〜300MB ほど) をその PC に落として準備します (最初の 1 回、数分。0.11.10 以降。手で準備する手順は <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte の README</a>)。<span class="mono">受信開始で AI マスクもかける</span> を入れておくと、<span class="mono">trkAR 受信</span> の ▶ で一緒に始まります。</p>
+<p>AI Mask (RVM)は、<a href="https://github.com/lunacava/trkAR/releases/tag/matte-v1.2">Releases</a> から <span class="mono">trkar-matte-&lt;版&gt;.zip</span> (RVM のモデル入り) を落として広げ、Blender の <span class="mono">編集 &gt; プリファレンス &gt; アドオン &gt; trkAR Camera</span> の <span class="mono">AI Mask フォルダ</span> に、広げた <span class="mono">trkar_matte</span> を指定します。<span class="mono">trkAR 受信</span> の実写の段に出る <span class="mono">AI Mask Setup</span> を押すと、Python とライブラリ (100〜300MB ほど) をその PC に落として準備します (最初の 1 回、数分。0.11.10 以降。手で準備する手順は <a href="https://github.com/lunacava/trkAR/tree/main/tools/matte">tools/matte の README</a>)。<span class="mono">受信開始で AI Mask ON</span> を入れておくと、<span class="mono">trkAR 受信</span> の ▶ で一緒に始まります。</p>
 
 <h3>5. 録って書き出す</h3>
 <ol>

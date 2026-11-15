@@ -177,8 +177,8 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
         update=lambda self, _context: _sync_sidebar(self.show_sidebar))
 
     matte_folder: StringProperty(
-        name="RVM Relay Folder",
-        description="Relay that mattes people out with AI (the folder with tools/matte's trkar_matte.py and .venv). Empty = search near the add-on",
+        name="AI Mask (RVM) Folder",
+        description="AI Mask (RVM): the folder with trkar_matte.py (the unzipped trkar-matte zip from Releases, or tools/matte). Empty = search near the add-on",
         subtype="DIR_PATH",
     )
 
@@ -347,7 +347,7 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
 
     # --- 受信 (NDI → シーン) ---
     ndi_in_camera_source: StringProperty(
-        name="Source Before Matting", default="",
+        name="Source Before AI Mask", default="",
         description="The source received before RVM matting started (trkAR on the iPhone). If the matte video is selected while matting is not running, switch back to this when receiving starts")
     ndi_in_source: StringProperty(name="Source", default="",
                                   description="NDI source name to receive (e.g. IPHONE (trkAR))")
@@ -373,7 +373,7 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
     )
     # 公開版は中継を入れていない人が多いので既定はオフ (入れていないと受信のたびに警告が出る)
     receive_matte: BoolProperty(
-        name="Start Matte on Receive", default=STUDIO,
+        name="Start AI Mask on Receive", default=STUDIO,
         description="When receiving video with ▶ in trkAR Receive, also start the RVM matte and receive the matted video (trkAR Matte)")
     ndi_in_low: BoolProperty(name="Receive Low Resolution", default=False,
                              description="Receive the NDI preview stream (lighter, but lower resolution)")
@@ -764,7 +764,7 @@ def _start_video_with_matte(operator, context):
         bpy.ops.trkar.matte_start()
     except RuntimeError as exc:
         # 切り抜きを始められなくても (中継のフォルダが無いなど)、実写はそのまま受ける
-        operator.report({"WARNING"}, _t("Cannot start matting, so receiving without matte: %s") % exc)
+        operator.report({"WARNING"}, _t("Cannot start AI Mask, so receiving without it: %s") % exc)
         bpy.ops.trkar.ndi_in_start()
 
 
@@ -900,10 +900,10 @@ def _resolve_video_source(operator, context):
         cameras = [n for n in visible if n.endswith(("(trkAR)", "(ARtrk)"))]
         fallback = cameras[0] if len(cameras) == 1 else ""
     if not fallback:
-        operator.report({"ERROR"}, _t("The matte video %s is selected, but matting is not running. Select the original iPhone source, or use Matte with RVM") % source)
+        operator.report({"ERROR"}, _t("The AI-masked video %s is selected, but AI Mask is not running. Select the original iPhone source, or press \"Use AI Mask (RVM)\"") % source)
         return None
     settings.ndi_in_source = fallback
-    operator.report({"INFO"}, _t("Matting is not running, so receiving the original source %s") % fallback)
+    operator.report({"INFO"}, _t("AI Mask is not running, so receiving the original source %s") % fallback)
     return fallback
 
 
@@ -1007,7 +1007,7 @@ def _switch_to_matte():
 
 class TRKAR_OT_matte_start(bpy.types.Operator):
     bl_idname = "trkar.matte_start"
-    bl_label = "Matte with RVM"
+    bl_label = "Use AI Mask (RVM)"
     bl_description = ("Matte the selected NDI source with RVM (Robust Video Matting, AI person matting) on this PC, then switch to receiving \"%s\" with alpha (latency about +50ms)") % getattr(matte, "OUTPUT_NAME", "")
 
     def execute(self, context):
@@ -1017,7 +1017,7 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
             self.report({"ERROR"}, _t("Select an NDI source (trkAR on the iPhone) first"))
             return {"CANCELLED"}
         if source.endswith("(%s)" % matte.OUTPUT_NAME):
-            self.report({"ERROR"}, _t("A matted video is selected. Select the original iPhone source"))
+            self.report({"ERROR"}, _t("An AI-masked video is selected. Select the original iPhone source"))
             return {"CANCELLED"}
         settings.ndi_in_camera_source = source  # 切り抜きが動いていないのに切り抜きの映像が残ったら、ここへ戻す
         just_stopped = time.monotonic() - matte_relay.stopped_at < 10.0
@@ -1031,11 +1031,11 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
             except Exception as exc:
                 self.report({"ERROR"}, str(exc))
                 return {"CANCELLED"}
-            self.report({"WARNING"}, _t("Receiving from a relay already running separately (%s)") % existing)
+            self.report({"WARNING"}, _t("Receiving from an AI Mask already running separately (%s)") % existing)
             return {"FINISHED"}
         folder = _matte_folder(context)
         if folder is None:
-            self.report({"ERROR"}, _t("trkar_matte.py not found. Set \"RVM Relay Folder\" in the add-on preferences to tools/matte"))
+            self.report({"ERROR"}, _t("AI Mask (RVM) not found. Set \"AI Mask (RVM) Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
             return {"CANCELLED"}
         matte_relay.previous_source = source
         matte_relay.previous_running = ndi_in.running
@@ -1054,15 +1054,15 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
 
 class TRKAR_OT_matte_setup(bpy.types.Operator):
     bl_idname = "trkar.matte_setup"
-    bl_label = "Set Up RVM Relay"
-    bl_description = ("Prepare the RVM relay on this PC: downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, "
-                      "about 100–300 MB) from their official sources into the relay folder's .venv. Takes a few minutes. "
+    bl_label = "Set Up AI Mask (RVM)"
+    bl_description = ("Prepare AI Mask (RVM) on this PC: downloads Python 3.12 and the libraries (Core ML or ONNX Runtime, "
+                      "about 100–300 MB) from their official sources into the AI Mask folder's .venv. Takes a few minutes. "
                       "Needed once")
 
     def execute(self, context):
         folder = _matte_folder(context)
         if folder is None:
-            self.report({"ERROR"}, _t("trkar_matte.py not found. Set \"RVM Relay Folder\" in the add-on preferences to tools/matte"))
+            self.report({"ERROR"}, _t("AI Mask (RVM) not found. Set \"AI Mask (RVM) Folder\" in the add-on preferences to the unzipped trkar-matte folder"))
             return {"CANCELLED"}
         try:
             matte_setup.start(folder)
@@ -1071,7 +1071,7 @@ class TRKAR_OT_matte_setup(bpy.types.Operator):
             return {"CANCELLED"}
         if not bpy.app.timers.is_registered(_redraw_while_setup):
             bpy.app.timers.register(_redraw_while_setup, first_interval=1.0)
-        self.report({"INFO"}, _t("Setting up the RVM relay (a few minutes)"))
+        self.report({"INFO"}, _t("Setting up AI Mask (RVM) (a few minutes)"))
         return {"FINISHED"}
 
 
@@ -1085,8 +1085,8 @@ def _redraw_while_setup():
 
 class TRKAR_OT_matte_stop(bpy.types.Operator):
     bl_idname = "trkar.matte_stop"
-    bl_label = "Stop Matting"
-    bl_description = "Stop the RVM relay and switch NDI receiving back to the original source"
+    bl_label = "Stop AI Mask"
+    bl_description = "Stop AI Mask (RVM) and switch NDI receiving back to the original source"
 
     def execute(self, context):
         _stop_matte(context)
@@ -2848,9 +2848,9 @@ def _draw_ndi_in(layout, context):
             sub.label(text=" / ".join(parts[:3]), icon="MOD_MASK")
             sub.label(text=" / ".join(parts[3:]))
         else:
-            sub.label(text=status or _t("Starting RVM…"), icon="TIME")
+            sub.label(text=status or _t("Starting AI Mask…"), icon="TIME")
     elif matte_setup.running:
-        sub.label(text=_t("Setting up the RVM relay…"), icon="TIME")
+        sub.label(text=_t("Setting up AI Mask (RVM)…"), icon="TIME")
         sub.label(text=matte_setup.status[:80])
     else:
         folder = _matte_folder(context)
@@ -2988,7 +2988,7 @@ class TRKAR_PT_depth_people:
             return
         if depth_in.running and depth_in.video_alpha:
             # trkar_matte.py (RVM) の "trkAR Matte" を受けているとき
-            col.label(text=_t("Outline is matted with the video alpha (RVM)"), icon="MOD_MASK")
+            col.label(text=_t("Outline is cut with the video alpha (AI Mask, RVM)"), icon="MOD_MASK")
         if depth_in.running and depth_in.person_only:
             # 深度なしの機種: 人だけを表示する (人物の設定は効かない)
             col.label(text=_t("No depth: person mask only (person %d%%)") % (depth_in.person_ratio * 100),

@@ -25,7 +25,7 @@ Website pages are built from `site/src/ja/*.html` and `site/src/en/*.html` (body
 - `addon/` — trkAR Camera, public edition (GPL-3.0-or-later, see `addon/LICENSE`)
 - `tools/screen_ndi/` — source of the add-on's screen-capture NDI helper `addon/bin/trkar-screen-ndi` (GPL-3.0-or-later, build with `build.sh`)
 - `examples/` — hook examples (Apache-2.0)
-- `tools/matte/` — AI person cut-out relay (RVM → RGBA NDI) for the add-on (GPL-3.0-or-later, see `tools/matte/LICENSE`)
+- `tools/matte/` — AI Mask (RVM) for the add-on: masks people in the live video with AI (RVM → RGBA NDI) (GPL-3.0-or-later, see `tools/matte/LICENSE`)
 - `assets/OCRA.otf` — OCR-A (Wales / Skala), see `assets/OCRA.otf.LICENSE.txt`
 
 ## ライセンス / License
@@ -43,7 +43,7 @@ when you redistribute. Only the add-on is GPL (as Blender requires): if you dist
 | 対象 | ライセンス |
 | --- | --- |
 | `addon/` (Blender アドオン trkAR Camera) | GPL-3.0-or-later (`addon/LICENSE`) |
-| `tools/matte/` (AI の人物の切り抜きの中継) | GPL-3.0-or-later (`tools/matte/LICENSE`)。git には RVM のモデルを入れず、Releases の `trkar-matte-<版>.zip` に同梱 (RVM も GPL-3.0、zip の `THIRD_PARTY/`) |
+| `tools/matte/` (アドオンの AI マスク (RVM)) | GPL-3.0-or-later (`tools/matte/LICENSE`)。git には RVM のモデルを入れず、Releases の `trkar-matte-<版>.zip` に同梱 (RVM も GPL-3.0、zip の `THIRD_PARTY/`) |
 | `tools/screen_ndi/` (アドオンの `bin/trkar-screen-ndi` のソース) | GPL-3.0-or-later (`addon/LICENSE` と同じ) |
 | `examples/` (フックの見本) | Apache-2.0 (`examples/LICENSE`、配るときは `examples/NOTICE` も残す) |
 | 文書 (`INTEGRATION.md`・`CLAUDE.md`・サイトの文章) とサンプルのシーン | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) — クレジット「© 2026 lunacava / trkAR」と出典の表示、変えたらそのことの明記 |

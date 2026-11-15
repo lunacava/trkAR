@@ -124,7 +124,7 @@ class MatteRelay:
         self.stop()
         python = python_for(folder)
         if python is None:
-            raise RuntimeError(_t("The RVM relay is not set up yet. Press \"Set Up RVM Relay\" (%s)") % folder)
+            raise RuntimeError(_t("AI Mask (RVM) is not set up yet. Press \"Set Up AI Mask (RVM)\" (%s)") % folder)
         self._lines.clear()
         self.last_error = ""
         self.source = source
@@ -146,7 +146,7 @@ class MatteRelay:
         # TerminateProcess で即殺すので終了コードが 1 になり、シグナルは意味を持たない。
         # こちらから止めた (stop() を呼んだ) ときはどのコードでもエラー扱いしない
         if code not in (0, -15) and process not in self._stopped:
-            self.last_error = self._lines[-1] if self._lines else _t("The relay exited (%d)") % code
+            self.last_error = self._lines[-1] if self._lines else _t("AI Mask exited (%d)") % code
         self._stopped.discard(process)
 
     def stop(self):

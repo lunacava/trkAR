@@ -127,7 +127,7 @@ def label(st):
     if st["state"] == "running":
         return _t("Hook: running (%s)") % event, "TIME"
     if st["state"] == "done":
-        return _t("Hook: done (%s) %s") % (event, st.get("message", "")), "CHECKMARK"
+        return _t("Hook: done (%s) %s") % (event, st.get("message", "")), "INFO"
     return _t("Hook: failed (%s) %s") % (event, st.get("message", "")), "ERROR"
 
 

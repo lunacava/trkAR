@@ -2726,7 +2726,7 @@ def _draw_tracking(layout, context):
                       icon="LINKED" if kind == "有線" else ("RADIOBUT_ON" if kind == "Wi-Fi" else "NETWORK_DRIVE"))
             row.operator("trkar.copy_ip", text="", icon="COPYDOWN").ip = ip
         if server.running and server.last_sender:
-            box.label(text=_t("Receiving from %s") % server.last_sender, icon="CHECKMARK")
+            box.label(text=_t("Receiving from %s") % server.last_sender, icon="LINKED")
     layout.prop(settings, "camera")
     if server.running:
         if player.active:
@@ -2773,7 +2773,7 @@ def _draw_pose_sync(layout, settings, detail):
         layout.label(text=_t("Video delay %.0f ms (jitter %.0f–%.0f)") % lag, icon="TIME")
     state = tracking.sync["state"]
     if state == "SYNCED":
-        layout.label(text=_t("Synced with video"), icon="CHECKMARK")
+        layout.label(text=_t("Synced with video"), icon="LINKED")
         count, ahead = tracking.predicted_recent()
         if count:
             # 姿勢が映像より遅れて届いた (Wi-Fi の止まりなど)
@@ -3151,7 +3151,7 @@ class TRKAR_PT_depth_detail:
         sub.prop(settings, "depth_sync_offset", text=_t("Correction ms"))
         if settings.depth_sync and depth_in.running and depth_in.frames_shown:
             if depth_in.sync_lag is not None:
-                col.label(text=_t("Synced with video (depth %+.0f ms)") % -depth_in.sync_lag, icon="CHECKMARK")
+                col.label(text=_t("Synced with video (depth %+.0f ms)") % -depth_in.sync_lag, icon="LINKED")
             elif not ndi_in.running:
                 col.label(text=_t("Receive the video over NDI to align"), icon="INFO")
             else:
@@ -3269,7 +3269,7 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
                 else:
                     layout.label(text=text)
             if _export["message"]:
-                layout.label(text=_export["message"], icon="CHECKMARK")
+                layout.label(text=_export["message"], icon="INFO")
             take_path = _take_path(context)
             if take_path is not None:
                 _draw_hook(layout, context, take_path)

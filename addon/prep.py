@@ -352,7 +352,28 @@ def pick_actor(plate, frames, out_path):
     h, w = color.shape[:2]
     mask = plate.mask(best, (w, h)) if plate.has_mask else None
     if mask is not None and mask.any():
-        region = _dilate(mask, 3)
+        # 人の輪郭のまわりの帯は色を抜く (明るさは残す)。iPhone の人物マスクは粗く、引き伸ばすと輪郭に背景の色が残る
+        # (紫の壁の前のテイクで、髪の毛のまわりに紫が残り、生成にも紫の縁が出た。2026-11-17)。帯は外側を広く、内側を狭く
+        # (内側まで広く抜くと、耳や頬の縁の肌の色まで灰色になる)
+        # 公開版のマスクは 0/1 (ぼかさない) なので、マスクの外は背景の灰色にし、内側の帯だけ色を抜く (外側も色だけ抜くと、
+        # 紫の背景が暗い灰色の縁になって残った)
+        band_px = max(3, w // 160)
+        inner = ~_dilate(~mask, max(1, band_px // 4))
+        band = mask & ~inner
+        luma = color[..., 0] * 0.299 + color[..., 1] * 0.587 + color[..., 2] * 0.114
+        color[band] = luma[band][:, None]
+        # 背景の色のにじみを引く (デスピル): 背景のいちばん多い色みの向きの成分を、輪郭から内側の一定の幅だけ引く
+        # (AI Mask (RVM) は髪の毛のまわりの背景も人と見ることがあり、帯の外にも背景の色が残る)。肌や髪は向きが違うので残る
+        chroma = color - luma[..., None]
+        if (~mask).sum() > 1000:
+            bg = np.median(chroma[~mask], axis=0)
+            strength = float(np.linalg.norm(bg))
+            if strength > 0.03:  # 灰色や白の背景なら何もしない
+                unit = bg / strength
+                near = mask & _dilate(~mask, band_px * 3)
+                along = np.clip(chroma @ unit, 0.0, None)
+                color[near] -= along[near][:, None] * unit
+        region = mask
         color[~region] = 0.5
         ys, xs = np.nonzero(region)
         pad_y, pad_x = int((ys.max() - ys.min()) * 0.15) + 8, int((xs.max() - xs.min()) * 0.15) + 8

@@ -1,7 +1,7 @@
 # trkar_matte — AI Mask (RVM)
 
 > trkAR Camera (Blender アドオン) の **AI Mask (RVM)** です。実写の中の人を AI で見分け、人だけを残します。ライセンスは GPL-3.0-or-later
-> (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) に RVM のモデルを同梱しています**
+> (`LICENSE`、アドオンと同じ)。**[Releases の `trkar-matte-<版>.zip`](https://github.com/lunacava/trkAR/releases/tag/matte-v1.3) に RVM のモデルを同梱しています**
 > (RVM ([Robust Video Matting](https://github.com/PeterL1n/RobustVideoMatting)) も GPL-3.0。ライセンスと出どころは
 > zip の `THIRD_PARTY/`)。zip を広げて Python の準備をすれば、モデルを落とす手順は要りません。
 > リポジトリの `tools/matte` から使うときは、下の手順で配布元からモデルを落としてください (git にはモデルを入れていません)。
@@ -24,7 +24,7 @@ iPhone ─NDI "trkAR"─▶ trkar_matte.py (RVM) ─NDI "trkAR Matte" (RGBA)─�
 
 ### Releases の zip から使う (かんたん)
 
-1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
+1. [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.3) から `trkar-matte-<版>.zip` を落として、好きな場所に広げる (`trkar_matte/` ができる。`models/` にモデルが入っている)
 2. Blender の `編集 > プリファレンス > アドオン > trkAR Camera` の `AI Mask フォルダ` (`AI Mask Folder`) に、広げた `trkar_matte/` を指定する
 3. `trkAR 受信` の実写の段に出る **`AI Mask Setup`** (`Set Up AI Mask`) を押す (最初の 1 回だけ。アドオン 0.11.10〜)。
    この PC に Python 3.12 とライブラリ (Core ML か ONNX Runtime、100〜300MB ほど) を、それぞれの配布元から `.venv` に落とす。
@@ -99,6 +99,9 @@ Blender のアドオン trkAR Camera からは、`trkAR 受信` の実写 (NDI) 
 
 2 秒ごとに `受信 fps / 送出 fps / RVM ms / 受信→送出 ms / 間引き / 受け手` を出す。
 処理が追いつかないときは古いフレームを捨てて最新を処理する (`間引き` が増える)。
+元の映像が 3 秒来ないとき (iPhone のアプリを開き直したときなど) は、元を探し直してつなぎ直す (1.3 から。
+前は「映像を待っています」のまま戻らず、AI Mask を入れ直す必要があった)。アドオン 0.11.15 からは、中継が止めていないのに
+終わったときもアドオンが立て直す (1 分に 3 回まで)。
 
 Windows では `.venv\Scripts\python.exe trkar_matte.py ...` (`.venv/bin/python` の代わり)。
 
@@ -152,7 +155,7 @@ keeps hair semi-transparent.
 
 **Setup from Releases (easiest)**
 
-1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.2) and unzip it anywhere. It contains `trkar_matte/` with the
+1. Download `trkar-matte-<version>.zip` from [Releases](https://github.com/lunacava/trkAR/releases/tag/matte-v1.3) and unzip it anywhere. It contains `trkar_matte/` with the
    RVM models in `models/` (RVM is GPL-3.0; its license and source are in `THIRD_PARTY/`)
 2. In Blender, set `Edit > Preferences > Add-ons > trkAR Camera > AI Mask Folder` to the unzipped `trkar_matte/`
 3. Press **`Set Up AI Mask`** in the live video section of `trkAR Receive` (once; add-on 0.11.10 or later). It
@@ -173,6 +176,9 @@ Japanese steps above (the `curl -LO …` lines); git does not contain them.
 From a terminal: `.venv/bin/python trkar_matte.py --list` (NDI sources), `.venv/bin/python trkar_matte.py --source "IPHONE (trkAR)" --model 1080`
 (`.venv\Scripts\python.exe` on Windows). Options are in the table above (`--source`, `--name`, `--model 720|1080`,
 `--backend auto|coreml|onnx`, `--units`, `--onnx-provider auto|cuda|dml|cpu`, `--parent-pid`).
+If the source video stops for 3 seconds (for example when the trkAR app on the iPhone is reopened), the relay finds the
+source again and reconnects (1.3 or later; before, it kept waiting until AI Mask was applied again). From add-on 0.11.15,
+the add-on also restarts the relay if it exits without being stopped (up to 3 times a minute).
 
 Latency on a Mac mini M4 (1080p 30 fps, Core ML): about +48 ms over direct NDI, staying at 30 fps. On a weak GPU
 (for example an NVIDIA MX150 on Windows) ONNX Runtime takes 300 ms or more per frame, too slow for real time.

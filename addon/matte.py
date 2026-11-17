@@ -110,6 +110,12 @@ class MatteRelay:
         self.last_error = ""
         # 止めた時刻。止めた直後は NDI の一覧に自分の中継がしばらく残る
         self.stopped_at = 0.0
+        # この Blender で中継を動かしたことがあるか (あれば、一覧に残った trkAR Matte を別の中継と見なさない)
+        self.started_once = False
+        # 動かしておきたいか (止めていないのに終わったら、アドオンが立て直す) と、立て直した時刻
+        self.wanted = False
+        self.restarts = []
+        self.model = "720"
 
     @property
     def running(self):

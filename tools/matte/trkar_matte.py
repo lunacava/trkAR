@@ -46,6 +46,7 @@ MODEL_CONFIG = {
     "1080": {"resolution": (1920, 1080), "ratio": 0.25, "coreml": "rvm_mobilenetv3_1920x1080_s0.25_fp16.mlmodel"},
 }
 ONNX_MODEL = "rvm_mobilenetv3_fp32.onnx"
+RECONNECT_SECONDS = 3.0  # この秒数映像が来なければ、ソースを探し直してつなぎ直す
 
 
 class Latest:
@@ -73,7 +74,8 @@ class Latest:
             return item
 
 
-def receive_loop(receiver, latest, running):
+def receive_loop(holder, latest, running):
+    """holder["receiver"] から受け続ける (つなぎ直したら、差し替えた受け手から受ける)"""
     def copy(frame):
         width, height, stride = frame.xres, frame.yres, frame.line_stride_in_bytes
         buf = (ctypes.c_ubyte * (stride * height)).from_address(frame.p_data)
@@ -83,10 +85,12 @@ def receive_loop(receiver, latest, running):
         latest.put((pixels.copy(), frame.timecode, rate, time.perf_counter()))
 
     while running.is_set():
+        receiver = holder["receiver"]
         try:
             receiver.capture(copy, 100)
         except RuntimeError as exc:
-            print("受信エラー:", exc)
+            if receiver is holder["receiver"]:  # 差し替えで閉じた古い受け手のエラーは出さない
+                print("受信エラー:", exc)
             time.sleep(0.5)
 
 
@@ -284,7 +288,7 @@ def main():
     matte(np.zeros((matte.size[1], matte.size[0], 4), np.uint8))  # 初回のコンパイル/最適化を先に済ませる
     matte.state = matte._initial_state()
 
-    receiver = ndi.Receiver(source)
+    holder = {"receiver": ndi.Receiver(source)}
     sender = ndi.Sender(args.name)
     latest = Latest()
     outgoing = Latest()
@@ -292,7 +296,7 @@ def main():
     running = threading.Event()
     running.set()
     threads = [
-        threading.Thread(target=receive_loop, args=(receiver, latest, running), daemon=True),
+        threading.Thread(target=receive_loop, args=(holder, latest, running), daemon=True),
         threading.Thread(target=send_loop, args=(sender, outgoing, running, stats), daemon=True),
     ]
     for thread in threads:
@@ -303,11 +307,28 @@ def main():
     last_report = time.perf_counter()
     last_received = 0
     slow_warned = False
+    # iPhone のアプリを開き直すなどで映像が途切れたら、ソースを探し直してつなぎ直す (2026-11-18。前は 1 回つないだきりで、
+    # 「映像を待っています」のまま戻らず、Blender で NDI を止めて AI Mask を入れ直すまで切り抜きが止まっていた)
+    last_frame_at = time.perf_counter()
+    last_reconnect = last_frame_at
+    retired = []
     try:
         while True:
             item = latest.take(0.5)
             now = time.perf_counter()
+            if item is None and now - last_frame_at > RECONNECT_SECONDS and now - last_reconnect > RECONNECT_SECONDS:
+                last_reconnect = now
+                found, _ = find_source(args.source or source, wait=1.0)
+                if found is not None:
+                    retired.append((now, holder["receiver"]))  # 受信のスレッドが使い終わってから閉じる
+                    holder["receiver"] = ndi.Receiver(found)
+                    matte.state = matte._initial_state()  # 前の場面の続きとして切り抜かない
+                    print("映像が %.0f 秒来ないので、つなぎ直しました (%s)" % (now - last_frame_at, found))
+                    source = found
+            while retired and now - retired[0][0] > 1.0:
+                retired.pop(0)[1].close()
             if item is not None:
+                last_frame_at = now
                 rgba, timecode, rate, received_at = item
                 t0 = time.perf_counter()
                 alpha = matte(rgba)
@@ -342,7 +363,9 @@ def main():
         running.clear()
         for thread in threads:
             thread.join(1.0)
-        receiver.close()
+        holder["receiver"].close()
+        for _at, old in retired:
+            old.close()
         sender.close()
 
 

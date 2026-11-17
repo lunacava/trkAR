@@ -599,6 +599,11 @@ JA_PUBLIC = {
     "trkAR: could not reload the take:": "trkAR: テイクを読み直せませんでした:",
     "trkAR: migrated data from before the rename (ARtrk) (names %d, scene settings %d)": "trkAR: 名前を変える前 (ARtrk) のデータを引き継ぎました (名前 %d、シーンの設定 %d)",
     "trkAR: playback had not started on REC, so it was restarted": "trkAR: REC で再生が始まっていなかったので始め直しました",
+    "Selected the NDI source %s automatically": "NDI の元を %s に自動で選びました",
+    "AI Mask stopped, so it was restarted (%s)": "AI Mask が止まったので立て直しました (%s)",
+    "AI Mask stopped %d times within a minute, so it was not restarted: %s": "AI Mask が 1 分に %d 回止まったので、立て直していません: %s",
+    "Last NDI Source": "前に受けた NDI の元",
+    "The NDI source (the iPhone's trkAR) received last time, in any file. When a scene has no source or its source is not visible, receiving picks this one": "前に受けた NDI の元 (iPhone の trkAR、どのファイルでも)。シーンの元が空か見えないとき、受信はこれを選ぶ",
 }
 JA_STUDIO = {}
 JA = dict(JA_PUBLIC, **JA_STUDIO)

@@ -176,6 +176,9 @@ class TRKAR_Preferences(bpy.types.AddonPreferences):
         description="The panels always appear in the \"Scene\" tab of the Properties editor. Turn this on to also show them in the trkAR tab of the 3D View sidebar (N key)",
         update=lambda self, _context: _sync_sidebar(self.show_sidebar))
 
+    last_ndi_source: StringProperty(
+        name="Last NDI Source", default="",
+        description="The NDI source (the iPhone's trkAR) received last time, in any file. When a scene has no source or its source is not visible, receiving picks this one")
     matte_folder: StringProperty(
         name="AI Mask Folder",
         description="AI Mask (RVM): the folder with trkar_matte.py (the unzipped trkar-matte zip from Releases, or tools/matte). Empty = search near the add-on",
@@ -323,15 +326,16 @@ class TRKAR_Settings(bpy.types.PropertyGroup):
                                 description="The ▶ in trkAR Receive also starts receiving live video (NDI) (when a source is selected)")
     receive_depth: BoolProperty(name="Also Receive Depth", default=False,
                                 description="The ▶ in trkAR Receive also starts receiving depth")
-    # NDI 送出のパネルで選ぶ送るもの (どれも 1 つずつしか動かさない)
+    # NDI 送出のパネルで選ぶ送るもの (どれも 1 つずつしか動かさない)。既定は画面を OS でキャプチャ (Mac)、
+    # カメラビューは最後に (2026-11-18。OS のキャプチャは macOS 14 以降なので、ほかの OS ではカメラビュー)
     ndi_out_mode: EnumProperty(
         name="What to Send",
-        items=(("CAMERA", "Camera View", "Render the tracking camera's view in this view's shading mode and send it (for the iPhone's MONI or OBS)"),
-               ("SCREEN_OS", "Screen (OS Capture)",
+        items=(("SCREEN_OS", "Screen (OS Capture)",
                 "Capture the Blender screen with macOS screen capture and send it. The scene fps rarely drops. Latency increases slightly because it goes through OS compositing. macOS 14 or later needs Screen Recording permission"),
                ("SCREEN_BLENDER", "Screen (Read in Blender)",
-                "Read the Blender screen inside Blender and send it. Lower latency, but in heavy scenes it waits for the GPU, so the scene fps drops. Blender 5.3 or later")),
-        default="CAMERA")
+                "Read the Blender screen inside Blender and send it. Lower latency, but in heavy scenes it waits for the GPU, so the scene fps drops. Blender 5.3 or later"),
+               ("CAMERA", "Camera View", "Render the tracking camera's view in this view's shading mode and send it (for the iPhone's MONI or OBS)")),
+        default="SCREEN_OS" if sys.platform == "darwin" else "CAMERA")
     screen_ndi_cursor: BoolProperty(name="Show Mouse Cursor", default=True,
                                     description="With Screen (OS Capture), also send the mouse cursor")
     screen_ndi_name: StringProperty(name="NDI Name", default="Blender Screen (trkAR)")
@@ -739,6 +743,8 @@ class TRKAR_OT_receive_start(bpy.types.Operator):
         video = bpy.ops.trkar.ndi_in_start
         if settings.receive_matte and not matte_relay.running:
             video = lambda: _start_video_with_matte(self, context)
+        if settings.receive_video and not ndi_in.running:
+            _auto_video_source(self, context)
         steps = [(not tracking.server.running, bpy.ops.trkar.tracking_start)]
         steps.append((settings.receive_video and settings.ndi_in_source and not ndi_in.running, video))
         steps.append((settings.receive_depth and not depth_in.running, bpy.ops.trkar.depth_start))
@@ -774,8 +780,8 @@ class TRKAR_OT_receive_stop(bpy.types.Operator):
     bl_description = "Stop receiving Camera Tracking, live video, depth, and matte all at once"
 
     def execute(self, context):
-        if matte_relay.running or bpy.app.timers.is_registered(_switch_to_matte):
-            _stop_matte(context)  # 中継を止め、ソースを切り抜く前に戻す
+        if matte_relay.running or matte_relay.wanted or bpy.app.timers.is_registered(_switch_to_matte):
+            _stop_matte(context)  # 中継を止め (落ちていても立て直さないようにし)、ソースを切り抜く前に戻す
         for running, operator in ((depth_in.running, bpy.ops.trkar.depth_stop),
                                   (ndi_in.running, bpy.ops.trkar.ndi_in_stop),
                                   (tracking.server.running, bpy.ops.trkar.tracking_stop)):
@@ -881,6 +887,58 @@ def _matte_running():
     return matte_relay.running
 
 
+def _visible_sources(context, wait=1.5):
+    """見えている NDI の元。探し始めたばかりで何も見えないときは、少しだけ待つ"""
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            visible = ndi_in.sources(_library_override(context))
+        except Exception:  # noqa: BLE001  NDI が読めないときは start で理由が出る
+            return []
+        if visible or time.monotonic() > deadline:
+            return visible
+        time.sleep(0.2)
+
+
+def _camera_source_choice(context, visible):
+    """切り抜く前の元 (iPhone の trkAR) の候補: 前に受けた元 (アドオンの設定、ファイルをまたぐ) → このシーンで
+    切り抜く前に受けていた元 → 見えている trkAR が 1 つだけならそれ"""
+    addon = context.preferences.addons.get(__package__)
+    remembered = addon.preferences.last_ndi_source if addon else ""
+    for name in (remembered, context.scene.trkar.ndi_in_camera_source):
+        if name and name in visible and not name.endswith(MATTE_SOURCE_SUFFIX):
+            return name
+    cameras = [n for n in visible if n.endswith(("(trkAR)", "(ARtrk)"))]
+    return cameras[0] if len(cameras) == 1 else ""
+
+
+def _auto_video_source(operator, context):
+    """受ける元が空か見えていなければ、自動で選ぶ (毎回メニューから選ばなくてよいように。2026-11-18)。
+    切り抜きの映像 (trkAR Matte) が選ばれているときは触らない (_resolve_video_source が見る)"""
+    settings = context.scene.trkar
+    current = settings.ndi_in_source
+    if current.endswith(MATTE_SOURCE_SUFFIX):
+        return current
+    visible = _visible_sources(context)
+    if current and current in visible:
+        return current
+    choice = _camera_source_choice(context, visible)
+    if choice and choice != current:
+        settings.ndi_in_source = choice
+        operator.report({"INFO"}, _t("Selected the NDI source %s automatically") % choice)
+    return settings.ndi_in_source
+
+
+def _remember_source(context, source):
+    """受けた元 (切り抜きの映像でないもの) を覚える。次のファイルでも、元が無ければこれを選ぶ"""
+    if not source or source.endswith(MATTE_SOURCE_SUFFIX):
+        return
+    context.scene.trkar.ndi_in_camera_source = source
+    addon = context.preferences.addons.get(__package__)
+    if addon and addon.preferences.last_ndi_source != source:
+        addon.preferences.last_ndi_source = source
+
+
 def _resolve_video_source(operator, context):
     """受けるソース。切り抜きの映像 (trkAR Matte) が選ばれているのに切り抜きが動いておらず見えてもいないときは、
     切り抜く前のソースに戻す (切り抜き中に保存した / Blender を閉じたあと、無いソースを待ち続けないように)。
@@ -893,12 +951,12 @@ def _resolve_video_source(operator, context):
         visible = ndi_in.sources(_library_override(context))
     except Exception:  # noqa: BLE001  NDI が読めないときは下の start で理由が出る
         visible = []
-    if source in visible:
-        return source  # 別に動いている中継 (ターミナルの trkar_matte.py など)
-    fallback = settings.ndi_in_camera_source
-    if not fallback:
-        cameras = [n for n in visible if n.endswith(("(trkAR)", "(ARtrk)"))]
-        fallback = cameras[0] if len(cameras) == 1 else ""
+    # 別に動いている中継 (ターミナルの trkar_matte.py など) なら、見えているものをそのまま受ける。ただし、この Blender で
+    # 中継を動かしたことがあるなら信じない (止まった・落ちた中継の名前が、NDI の一覧にしばらく残る。2026-11-18、切り抜きが
+    # 途切れたまま trkAR Matte を受け続け、NDI を止めて元を選び直し AI Mask を入れ直すまで戻らなかった)
+    if source in visible and not matte_relay.started_once:
+        return source
+    fallback = _camera_source_choice(context, visible) or settings.ndi_in_camera_source
     if not fallback:
         operator.report({"ERROR"}, _t("The AI-masked video %s is selected, but AI Mask is not running. Select the original iPhone source, or press \"Apply AI Mask\"") % source)
         return None
@@ -914,12 +972,19 @@ class TRKAR_OT_ndi_in_start(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.trkar
+        _auto_video_source(self, context)
         if not settings.ndi_in_source:
             self.report({"ERROR"}, _t("Select a source"))
             return {"CANCELLED"}
+        wanted = settings.ndi_in_source
         source = _resolve_video_source(self, context)
         if source is None:
             return {"CANCELLED"}
+        if wanted.endswith(MATTE_SOURCE_SUFFIX) and not source.endswith(MATTE_SOURCE_SUFFIX) and settings.receive_matte:
+            # 切り抜きの映像が選ばれていたのに中継が止まっていた: AI Mask ON なら、元から切り抜き直す
+            if player.active:
+                player.stop(context.scene)
+            return bpy.ops.trkar.matte_start()
         if player.active:
             player.stop(context.scene)
         try:
@@ -928,6 +993,7 @@ class TRKAR_OT_ndi_in_start(bpy.types.Operator):
             ndi_in.stop()
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
+        _remember_source(context, source)
         _ensure_video_shown(self, context)
         return {"FINISHED"}
 
@@ -1019,7 +1085,7 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
         if source.endswith("(%s)" % matte.OUTPUT_NAME):
             self.report({"ERROR"}, _t("An AI-masked video is selected. Select the original iPhone source"))
             return {"CANCELLED"}
-        settings.ndi_in_camera_source = source  # 切り抜きが動いていないのに切り抜きの映像が残ったら、ここへ戻す
+        _remember_source(context, source)  # 切り抜きが動いていないのに切り抜きの映像が残ったら、ここへ戻す
         just_stopped = time.monotonic() - matte_relay.stopped_at < 10.0
         existing = None if just_stopped else _find_matte_source(context)
         if existing is not None:
@@ -1048,6 +1114,11 @@ class TRKAR_OT_matte_start(bpy.types.Operator):
         if bpy.app.timers.is_registered(_switch_to_matte):
             bpy.app.timers.unregister(_switch_to_matte)
         bpy.app.timers.register(_switch_to_matte, first_interval=1.0)
+        matte_relay.started_once = True
+        matte_relay.wanted = True
+        matte_relay.model = settings.matte_model
+        if not bpy.app.timers.is_registered(_matte_watchdog):
+            bpy.app.timers.register(_matte_watchdog, first_interval=2.0)
         _ensure_video_shown(self, context)
         return {"FINISHED"}
 
@@ -1093,7 +1164,47 @@ class TRKAR_OT_matte_stop(bpy.types.Operator):
         return {"FINISHED"}
 
 
+MATTE_RESTARTS = 3  # 中継が落ちたとき、1 分にこの回数まで立て直す
+
+
+def _matte_watchdog():
+    """中継 (AI Mask) が止めていないのに終わったら、元から立て直す (2026-11-18)。
+    iPhone のアプリを開き直したときなどに落ちたまま、trkAR Matte を待ち続けないように"""
+    if not matte_relay.wanted:
+        return None
+    if matte_relay.running:
+        return 2.0
+    now = time.monotonic()
+    matte_relay.restarts = [t for t in matte_relay.restarts if now - t < 60.0]
+    if len(matte_relay.restarts) >= MATTE_RESTARTS:
+        matte_relay.wanted = False
+        matte_relay.last_error = _t("AI Mask stopped %d times within a minute, so it was not restarted: %s") % (
+            MATTE_RESTARTS, matte_relay.last_error)
+        return None
+    context = bpy.context
+    folder = _matte_folder(context)
+    source = matte_relay.previous_source or context.scene.trkar.ndi_in_camera_source
+    if folder is None or not source:
+        matte_relay.wanted = False
+        return None
+    matte_relay.restarts.append(now)
+    reason = matte_relay.last_error
+    try:
+        matte_relay.start(folder, source, getattr(matte_relay, "model", "720"))
+    except Exception as exc:  # noqa: BLE001
+        matte_relay.last_error = str(exc)
+        return 5.0
+    matte_relay.last_error = _t("AI Mask stopped, so it was restarted (%s)") % (reason or "-")
+    ndi_in.stop()
+    if not bpy.app.timers.is_registered(_switch_to_matte):
+        bpy.app.timers.register(_switch_to_matte, first_interval=1.0)
+    return 2.0
+
+
 def _stop_matte(context):
+    matte_relay.wanted = False
+    if bpy.app.timers.is_registered(_matte_watchdog):
+        bpy.app.timers.unregister(_matte_watchdog)
     if bpy.app.timers.is_registered(_switch_to_matte):
         bpy.app.timers.unregister(_switch_to_matte)
     matte_relay.stop()
@@ -2560,6 +2671,11 @@ class TRKAR_PT_panel(_TrkARPanel, bpy.types.Panel):
         layout = self.layout
         settings = context.scene.trkar
         server = tracking.server
+        if not _receiving():
+            # 毎回まず押すボタン: 大きく、押された色 (青) で見分ける (2026-11-18。見出しの ▶ と同じ)
+            row = layout.row()
+            row.scale_y = 1.6
+            row.operator("trkar.receive_start", icon="PLAY", depress=True)
         _receive_section(layout, "TRKAR_recv_tracking", _t("Camera Tracking"), "CAMERA_DATA",
                          (_t("Playing") if player.active else _t("Receiving")) if server.running else "",
                          server.running, "trkar.tracking_start", "trkar.tracking_stop", None, context, _draw_tracking)
@@ -3080,9 +3196,12 @@ class TRKAR_PT_take(_TrkARPanel, bpy.types.Panel):
         prefs = _prefs(context)
         layout.label(text=_t("Next  %s   %s") % (_slate_label(prefs), prefs.slate_production or "-"), icon="FILE_MOVIE")
         row = layout.row(align=True)
-        row.scale_y = 1.4
-        row.operator("trkar.take_rec_start", icon="REC")
-        row.prop(settings, "take_fps", text="")
+        row.scale_y = 1.8
+        # 毎回押すボタン: 大きく、押された色 (青) に。録画中の「止める」は赤 (alert)
+        row.operator("trkar.take_rec_start", icon="REC", depress=True)
+        sub = row.row(align=True)
+        sub.scale_x = 0.8
+        sub.prop(settings, "take_fps", text="")
         if not tracking.server.running:
             layout.label(text=_t("The camera won't move while tracking is stopped"), icon="INFO")
         if not ndi_in.running and not player.active:

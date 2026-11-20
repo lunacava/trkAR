@@ -71,12 +71,16 @@ PAGES = {
 
 FOOTER = {
     "ja": (
+        "<p>ご意見・ご質問・不具合の報告は <a href=\"https://github.com/lunacava/trkAR/issues\">GitHub Issues</a> へ"
+        " (書き方は <a href=\"support.html#contact\">サポート</a>)。</p>\n"
         "<p>trkAR は lunacava の個人のプロジェクトです。所属する会社・団体の製品やサービスではなく、"
         "その見解を示すものでもありません。</p>\n"
         "<p>© 2026 lunacava. NDI® は Vizrt NDI AB の登録商標です。trkAR は Vizrt NDI AB と提携しておらず、"
         "承認・後援も受けていません。</p>"
     ),
     "en": (
+        "<p>Feedback, questions and bug reports: <a href=\"https://github.com/lunacava/trkAR/issues\">GitHub Issues</a>"
+        " (see <a href=\"support.html#contact\">Support</a> for how).</p>\n"
         "<p>trkAR is a personal project by lunacava. It is not a product or service of, and does not "
         "represent the views of, any company or organization the author is affiliated with.</p>\n"
         "<p>© 2026 lunacava. NDI® is a registered trademark of Vizrt NDI AB. trkAR is not affiliated with, "

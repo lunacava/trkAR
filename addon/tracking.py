@@ -479,7 +479,8 @@ def _tick():
     if pose is not None and serial != _state["serial"]:
         _state["serial"] = serial
         if _accept(settings, pose):
-            settings.last_client_id = pose.client_id
+            if settings.last_client_id != pose.client_id:
+                settings.last_client_id = pose.client_id
             _state["latest"] = pose
 
     latest = _state.get("latest")
@@ -521,7 +522,9 @@ def _tick():
         location, rotation = apply_controls(settings, location, rotation)
 
         rot_matrix = rotation.to_matrix().to_4x4()
-        camera.matrix_world = Matrix.Translation(location) @ rot_matrix
+        matrix = Matrix.Translation(location) @ rot_matrix
+        if not _matrix_close(camera.matrix_world, matrix):
+            camera.matrix_world = matrix
 
         # レンズ: リモート操作が来ていればそのレンズ、無ければこの端末のコントローラーのレンズ設定
         rig = remote if remote is not None else (_state.get("rig") if settings.use_rig_lens else None)
@@ -554,51 +557,74 @@ def _tick():
     return INTERVAL
 
 
+def _assign(owner, attr, value):
+    """値が変わったときだけ書く。RNA に書くと同じ値でも「変わった」と知らせ、depsgraph の評価と
+    アウトライナー・プロパティなどの描き直しが起きる (tick は 1 秒に 240 回)。
+    float は Blender の中では float32 なので、少しの違いは同じとみなす"""
+    current = getattr(owner, attr)
+    if isinstance(value, float) and isinstance(current, float):
+        if abs(current - value) <= 1e-6 * max(1.0, abs(value)):
+            return
+    elif current == value:
+        return
+    setattr(owner, attr, value)
+
+
+def _matrix_close(a, b, tolerance=1e-6):
+    """カメラの matrix_world を書き直すかどうか。書いた値は loc / rot / scale に分けて持ち、評価で組み直されるので、
+    同じ姿勢でも最後の桁がずれることがある。tolerance は Blender の長さ (1e-6 = 1 µm 相当) と回転の成分"""
+    for row_a, row_b in zip(a, b):
+        for x, y in zip(row_a, row_b):
+            if abs(x - y) > tolerance * max(1.0, abs(y)):
+                return False
+    return True
+
+
 def apply_lens(settings, cam, rig=None, hfov=0.0):
     """画角と被写界深度。Blender 側 (Blender でオフセットの焦点距離・F 値・ピント) > iPhone のレンズ設定 (rig) >
     画角の同期 / カメラ自体の設定 の順に優先し、最後にオートフォーカスを当てる。受信していないときは、
     ビューのコントローラーが rig なしで呼ぶ"""
     if settings.ctl_lens > 0.0:
-        cam.lens_unit = "MILLIMETERS"
-        cam.sensor_fit = "HORIZONTAL"
-        cam.sensor_width = 36.0
-        cam.lens = settings.ctl_lens
+        _assign(cam, "lens_unit", "MILLIMETERS")
+        _assign(cam, "sensor_fit", "HORIZONTAL")
+        _assign(cam, "sensor_width", 36.0)
+        _assign(cam, "lens", settings.ctl_lens)
     elif rig is not None and rig.focal_mm > 0.0:
         # iPhone 側の焦点距離は 35mm 判 (横 36mm) 換算
-        cam.lens_unit = "MILLIMETERS"
-        cam.sensor_fit = "HORIZONTAL"
-        cam.sensor_width = 36.0
-        cam.lens = rig.focal_mm
+        _assign(cam, "lens_unit", "MILLIMETERS")
+        _assign(cam, "sensor_fit", "HORIZONTAL")
+        _assign(cam, "sensor_width", 36.0)
+        _assign(cam, "lens", rig.focal_mm)
     elif settings.sync_fov and hfov > 0.0:
-        cam.lens_unit = "FOV"
-        cam.sensor_fit = "HORIZONTAL"
-        cam.angle = math.radians(hfov)
+        _assign(cam, "lens_unit", "FOV")
+        _assign(cam, "sensor_fit", "HORIZONTAL")
+        _assign(cam, "angle", math.radians(hfov))
 
     if rig is not None:
         dof = cam.dof
-        dof.use_dof = rig.fstop > 0.0
+        _assign(dof, "use_dof", rig.fstop > 0.0)
         if rig.fstop > 0.0:
-            dof.focus_object = None
-            dof.aperture_fstop = rig.fstop
+            _assign(dof, "focus_object", None)
+            _assign(dof, "aperture_fstop", rig.fstop)
             # 実寸 (m) で届くので移動量と同じスケールを掛ける
-            dof.focus_distance = max(0.01, rig.focus_distance * settings.scale)
+            _assign(dof, "focus_distance", max(0.01, rig.focus_distance * settings.scale))
 
     # Blender 側の F 値 (0 = 上書きしない、負 = 被写界深度を切る) とピント距離 (0 = 上書きしない)
     if settings.ctl_fstop < 0.0:
-        cam.dof.use_dof = False
+        _assign(cam.dof, "use_dof", False)
     elif settings.ctl_fstop > 0.0:
-        cam.dof.use_dof = True
-        cam.dof.focus_object = None
-        cam.dof.aperture_fstop = settings.ctl_fstop
+        _assign(cam.dof, "use_dof", True)
+        _assign(cam.dof, "focus_object", None)
+        _assign(cam.dof, "aperture_fstop", settings.ctl_fstop)
     if settings.ctl_focus > 0.0:
-        cam.dof.focus_object = None
-        cam.dof.focus_distance = settings.ctl_focus
+        _assign(cam.dof, "focus_object", None)
+        _assign(cam.dof, "focus_distance", settings.ctl_focus)
 
     # オートフォーカス (実写の板の距離)。F 値と被写界深度のオン・オフは上のまま
     distance = focus_hook() if focus_hook is not None else None
     if distance is not None:
-        cam.dof.focus_object = None
-        cam.dof.focus_distance = max(0.01, distance)
+        _assign(cam.dof, "focus_object", None)
+        _assign(cam.dof, "focus_distance", max(0.01, distance))
 
 
 def _active_remote(settings, latest):

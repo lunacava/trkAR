@@ -137,7 +137,10 @@ class NDIOutput:
             return None
         area = self._find_area()
         if area is not None:
-            area.tag_redraw()
+            # 描くのは 3D ビューの絵の所 (WINDOW) の描画コールバックなので、サイドバーやヘッダーは描き直さない
+            for region in area.regions:
+                if region.type == "WINDOW":
+                    region.tag_redraw()
         return 1.0 / max(1.0, self.fps)
 
     def _draw(self):

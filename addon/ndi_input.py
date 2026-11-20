@@ -21,6 +21,9 @@ IMAGE_NAME = "trkAR NDI"
 # 映像が届くまでの画像の色。透明にしておくと、板を置いたままでも受け始めるまでは CG を隠さない
 # (板のマテリアルは画像のアルファで透ける。_video_material)
 BLANK_COLOR = (0.0, 0.0, 0.0, 0.0)
+# 0..255 → 0..1 の倍率。Python の float (1.0 / 255.0) と掛けると uint8 → float64 で計算してから float32 に
+# 入れ直すので、float32 のまま掛ける (1080p で 4.0 → 2.4 ms、値の違いは 1e-7 以下)
+_INV_255 = np.float32(1.0 / 255.0)
 
 
 def ensure_image(width=16, height=9):
@@ -137,7 +140,7 @@ class NDIInput:
         pixels = ndi.to_rgba_order(pixels, frame.FourCC)
         # NDI は左上原点、Blender の画像は左下原点。ここで反転と 0..1 化まで済ませておく
         floats = np.empty((height, width, 4), dtype=np.float32)
-        np.multiply(pixels[::-1], 1.0 / 255.0, out=floats, casting="unsafe")
+        np.multiply(pixels[::-1], _INV_255, out=floats, casting="unsafe")
         with self._lock:
             self._pending = (floats, frame.timecode)
         self.has_alpha = frame.FourCC in (ndi.FOURCC_RGBA, ndi.FOURCC_BGRA)
@@ -181,7 +184,7 @@ class NDIInput:
     def show_rgba(self, rgba):
         """録画したフレーム ((h, w, 4) uint8、左上原点) を受信したときと同じ画像に出す (テイク再生)。"""
         floats = np.empty(rgba.shape, dtype=np.float32)
-        np.multiply(rgba[::-1], 1.0 / 255.0, out=floats, casting="unsafe")
+        np.multiply(rgba[::-1], _INV_255, out=floats, casting="unsafe")
         self._upload(floats)
 
     def _upload(self, floats):
@@ -199,8 +202,11 @@ class NDIInput:
         self.resolution = (width, height)
         self.frames_shown += 1
         self.show_rate.tick()
-        # マテリアル / カメラ背景を表示しているビューを描き直す
+        # マテリアル / カメラ背景を表示しているビューを描き直す。エリアごと (area.tag_redraw) だと
+        # サイドバーやヘッダーも毎コマ描き直し、パネルの Python がコマの数だけ動くので、絵の所 (WINDOW) だけ
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type in {"VIEW_3D", "IMAGE_EDITOR", "NODE_EDITOR"}:
-                    area.tag_redraw()
+                    for region in area.regions:
+                        if region.type == "WINDOW":
+                            region.tag_redraw()

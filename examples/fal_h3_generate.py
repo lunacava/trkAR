@@ -25,6 +25,10 @@ or as the add-on's hook (Edit > Preferences > Add-ons > trkAR Camera > After-tak
   and pass --allow-external to say you have it (the hook does not send anything without it).
 - The shot description: the last line of prompt.txt is a placeholder. Edit prompt.txt, or pass --shot.
 - The prompt's <Video 1> / <Picture N> are rewritten to the names H3 uses (Video 1 / Image N).
+- --look <image> sends that image as <Picture 1> (the location) instead of layout.png. layout.png is the scene
+  drawn in Blender, so the generated background tends to keep its CG look; a photoreal look sheet of the same
+  place gives a more real result. The sample scenes come with one each on Releases (scenes-v1:
+  trkar_subway_platform_look_sheet.jpg, trkar_classroom_look_sheet.jpg).
 - H3 takes 5 to 15 seconds. Set the take's range so that the inputs are in that length.
 - The last line printed is {"message", "url"} JSON, which the add-on shows in its panel.
 - Python 3.8+ standard library only.
@@ -89,6 +93,9 @@ def main():
                     help="you have the consent of the people in the take to send their image to fal.ai")
     ap.add_argument("--resolution", default="768P", choices=["768P", "1080P"])
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--look", default=os.environ.get("TRKAR_LOOK", ""),
+                    help="a photoreal look sheet of the location to send as <Picture 1> instead of layout.png "
+                         "(default: $TRKAR_LOOK)")
     args = ap.parse_args()
 
     if args.event and args.event != "for_generation":
@@ -117,15 +124,21 @@ def main():
         done("write the shot in prompt.txt (its last line is a placeholder), or pass --shot", code=2)
     prompt = re.sub(r"<Picture (\d+)>", r"Image \1", re.sub(r"<Video (\d+)>", r"Video \1", "\n".join(lines).strip()))
 
-    images = [name for name in ("layout.png", "actor.jpg") if os.path.isfile(os.path.join(folder, name))]
-    files = images + ["reference.mp4"]
-    print("uploading %s to fal.ai" % ", ".join(files), flush=True)
+    images = [os.path.join(folder, name) for name in ("layout.png", "actor.jpg") if os.path.isfile(os.path.join(folder, name))]
+    if args.look:
+        look = os.path.abspath(os.path.expanduser(args.look))
+        if not os.path.isfile(look):
+            done("--look image not found: %s" % look, code=2)
+        images = [look] + [path for path in images if os.path.basename(path) != "layout.png"]
+    files = images + [os.path.join(folder, "reference.mp4")]
+    print("uploading %s to fal.ai" % ", ".join(os.path.basename(path) for path in files), flush=True)
     token = http("POST", TOKEN_URL, {"Authorization": "Key " + key, "Content-Type": "application/json",
                                      "Accept": "application/json"}, b"{}")
     urls = []
-    for name in files:
+    for path in files:
+        name = os.path.basename(path)
         kind = "video/mp4" if name.endswith(".mp4") else "image/png" if name.endswith(".png") else "image/jpeg"
-        with open(os.path.join(folder, name), "rb") as f:
+        with open(path, "rb") as f:
             body = f.read()
         uploaded = http("POST", CDN_URL + "/files/upload",
                         {"Authorization": "%s %s" % (token["token_type"], token["token"]), "X-Fal-File-Name": name,
@@ -156,7 +169,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     urllib.request.urlretrieve(video, os.path.join(out, "h3.mp4"))  # noqa: S310
     with open(os.path.join(out, "request.json"), "w", encoding="utf-8") as f:
-        json.dump({"model": MODEL, "arguments": dict(arguments, reference_image_urls=images,
+        json.dump({"model": MODEL, "arguments": dict(arguments, reference_image_urls=[os.path.basename(p) for p in images],
                                                      reference_video_urls=["reference.mp4"]),
                    "request_id": submitted.get("request_id"), "seconds": round(time.time() - started, 1)},
                   f, ensure_ascii=False, indent=2)

@@ -332,7 +332,7 @@ iPhone アプリ (trkAR) と Blender アドオン (trkAR Camera) は、4 章の 
 ## 見本
 
 - [`examples/s3_upload.py`](examples/s3_upload.py): テイクを Amazon S3 に上げるフック (aws CLI を使う)
-- [`examples/fal_h3_generate.py`](examples/fal_h3_generate.py): `for_generation/` を fal.ai の MiniMax H3 に送って、結果の動画を落とす (フックの `for_generation` でも、手でも。料金は自分の fal.ai のアカウント)
+- [`examples/fal_h3_generate.py`](examples/fal_h3_generate.py): `for_generation/` を fal.ai の MiniMax H3 に送って、結果の動画を落とす (フックの `for_generation` でも、手でも。料金は自分の fal.ai のアカウント)。`--look <画像>` で、`layout.png` の代わりに写実的なルックの画像を場所の参照に送る
 
 自分の連携を作るときは、見本をコピーして、上げ先と認証の部分を書き換えるのが近道です。
 

@@ -35,6 +35,7 @@
   <tr><td>Models that remake a base video (such as Kling's video edit)</td><td><span class="mono">reference.mp4</span> as the base video, <span class="mono">actor.jpg</span> and <span class="mono">layout.png</span> as reference images. The base video may have size rules (Kling needs a height of 700 px or more and square pixels; export with a larger long side)</td><td>As the model's documentation says</td><td>Depends on the model (often up to 10 s)</td></tr>
   <tr><td>Models that start from a first frame (image-to-video)</td><td><span class="mono">first_frame.png</span> as the first frame. Describe the motion in the prompt (the camera move is hard to reproduce)</td><td>–</td><td>Depends on the model</td></tr>
 </table>
+<p><span class="mono">layout.png</span> is the scene as drawn in Blender, so the generated background tends to keep its CG look. Passing a photoreal look sheet of the same place (front, right, back and left in a 2×2) as <span class="mono">&lt;Picture 1&gt;</span> instead gives a more real result. The <a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">sample scenes</a> come with one each (<span class="mono">trkar_subway_platform_look_sheet.jpg</span>, <span class="mono">trkar_classroom_look_sheet.jpg</span>; made from the Blender views with AI image generation).</p>
 <p>Some models refuse images with faces of real people. In that case leave out <span class="mono">actor.jpg</span> and describe the person in the prompt.</p>
 
 <h3>Sending them automatically (example)</h3>
@@ -44,6 +45,7 @@
   <li>It is charged to your own fal.ai account. Pass the key in the environment variable <span class="mono">FAL_KEY</span> (do not write it in the command or a file)</li>
   <li>Add <span class="mono">--allow-external</span> once you have the consent of the people in the take. Without it nothing is sent</li>
   <li>Describe the shot by editing the last line of <span class="mono">prompt.txt</span>, or pass <span class="mono">--shot "…"</span></li>
+  <li>With <span class="mono">--look &lt;image&gt;</span>, that image is sent as the location reference (<span class="mono">&lt;Picture 1&gt;</span>) instead of <span class="mono">layout.png</span> (for example, the look sheet of a sample scene)</li>
   <li>To send to another service or your own cloud, change where this example sends. The format of the files is in <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.en.md#6-generation-inputs-for_generation">section 6 of INTEGRATION.en.md</a></li>
 </ul>
 

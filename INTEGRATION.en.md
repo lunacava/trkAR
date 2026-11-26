@@ -335,7 +335,7 @@ The shape of `manifest.json` (`version` is currently `1`. Fields may be added; t
 ## Examples
 
 - [`examples/s3_upload.py`](examples/s3_upload.py): A hook that uploads a take to Amazon S3 (uses the aws CLI)
-- [`examples/fal_h3_generate.py`](examples/fal_h3_generate.py): Sends `for_generation/` to MiniMax H3 on fal.ai and downloads the result (as a `for_generation` hook or by hand. Charged to your own fal.ai account)
+- [`examples/fal_h3_generate.py`](examples/fal_h3_generate.py): Sends `for_generation/` to MiniMax H3 on fal.ai and downloads the result (as a `for_generation` hook or by hand. Charged to your own fal.ai account) `--look <image>` sends a photoreal look sheet as the location reference instead of `layout.png`.
 
 When building your own integration, the quickest way is to copy an example and rewrite the destination and authentication parts.
 

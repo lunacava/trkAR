@@ -35,6 +35,7 @@
   <tr><td>動画を土台に作り替えるモデル (Kling の video edit など)</td><td><span class="mono">reference.mp4</span> を土台の動画、<span class="mono">actor.jpg</span> や <span class="mono">layout.png</span> を参照画像に。土台の動画の高さや画素の比に決まりがあることがある (Kling は高さ 700px 以上・1:1。書き出すときの長辺を大きくする)</td><td>各モデルの説明に合わせる</td><td>モデルによる (10 秒までが多い)</td></tr>
   <tr><td>最初のコマから作るモデル (image-to-video)</td><td><span class="mono">first_frame.png</span> を最初のコマに。動きはプロンプトで書く (カメラの動きは再現されにくい)</td><td>―</td><td>モデルによる</td></tr>
 </table>
+<p><span class="mono">layout.png</span> は Blender で描いたシーンそのものなので、そのまま渡すと、生成の背景が CG の質感に引っぱられやすくなります。同じ場所を写実的にしたルックの画像 (前・右・後ろ・左の 2×2) を <span class="mono">&lt;Picture 1&gt;</span> の代わりに渡すと、実写らしくなります。<a href="https://github.com/lunacava/trkAR/releases/tag/scenes-v1">サンプルのシーン</a> には、それぞれのルックの画像 (<span class="mono">trkar_subway_platform_look_sheet.jpg</span>・<span class="mono">trkar_classroom_look_sheet.jpg</span>) を付けています (Blender の画面をもとに AI の画像生成で写実化したもの)。</p>
 <p>実在の人の顔を含む画像を断るモデルもあります。その場合は <span class="mono">actor.jpg</span> を渡さず、人の見た目をプロンプトで書きます。</p>
 
 <h3>自動で送る (見本)</h3>
@@ -44,6 +45,7 @@
   <li>料金は自分の fal.ai のアカウントにかかります。鍵は環境変数 <span class="mono">FAL_KEY</span> で渡します (コマンドやファイルに書かない)</li>
   <li>写っている人の同意を取ったうえで <span class="mono">--allow-external</span> を付けます。付けないと何も送りません</li>
   <li>場面の説明は <span class="mono">prompt.txt</span> の最後の行を書き換えるか、<span class="mono">--shot "…"</span> で渡します</li>
+  <li><span class="mono">--look &lt;画像&gt;</span> を付けると、<span class="mono">layout.png</span> の代わりにその画像を場所の参照 (<span class="mono">&lt;Picture 1&gt;</span>) として送ります (サンプルのシーンのルックの画像など)</li>
   <li>ほかのサービスや自分のクラウドに送るときは、この見本の送り先を書き換えます。素材の決まりは <a href="https://github.com/lunacava/trkAR/blob/main/INTEGRATION.md#6-生成用の素材-for_generation">INTEGRATION.md の 6 章</a> にあります</li>
 </ul>
 
